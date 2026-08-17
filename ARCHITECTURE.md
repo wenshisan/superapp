@@ -1,119 +1,216 @@
-# 插件式 Agent 通用框架 —— 架构设计（Rust 内核 + Flutter 插件化 UI）
+# Architecture — a pluggable agent framework (Rust kernel + Flutter plugin UI)
 
-> 参考 **DeepSeek Harness (DSH)** 的"一切皆插件（Everything is a Plugin）"与"Cordis 时空可组合性"理念，
-> 将底层运行时从 **Node.js** 替换为 **Rust**，用户界面从 Web 替换为**插件化的 Flutter**。
-> 目标：一套内存安全、高性能、模型中立、可热插拔的通用 Agent 运行基础设施，覆盖桌面与移动端。
+> Two ideas are borrowed from **DeepSeek Harness (DSH)** and its **Cordis** runtime:
+> *everything is a plugin*, and *plugins compose across space and time*. superapp keeps both
+> and swaps the substrate: the runtime moves from **Node.js to Rust**, and the interface moves
+> from a built-in web app to a **Flutter shell in which the UI itself is a plugin**.
+>
+> Goal: one memory-safe, model-neutral, hot-swappable agent runtime that runs as a native
+> binary on desktop and links into a mobile app.
+
+**This document describes the target design, not the current state of the tree.** The kernel
+today is ~460 lines across seven modules: it boots, activates statically linked plugins, and
+records a trace. Everything else here is a contract or a plan. Each section is tagged so the
+two never get confused:
+
+| Tag | Meaning |
+|-----|---------|
+| ✅ **built** | Implemented and exercised by `cargo run -p cordis-rs --example boot` |
+| 🟡 **contract** | Types/signatures exist and compile, behavior does not |
+| ⬜ **planned** | Not in the tree at all |
+
+See [`README.md`](./README.md) for the per-subsystem status list and the known gaps.
+
+## Contents
+
+1. [Design philosophy](#1-design-philosophy-everything-is-a-plugin)
+2. [Layered architecture](#2-layered-architecture)
+3. [The Rust kernel (Cordis-RS)](#3-the-rust-kernel-cordis-rs)
+4. [Plugin categories and contracts](#4-plugin-categories-and-contracts)
+5. [Sandboxing](#5-sandboxing-two-tracks)
+6. [Flutter plugin UI](#6-flutter-plugin-ui)
+7. [End-to-end traceability](#7-end-to-end-traceability)
+8. [Repository layout](#8-repository-layout)
+9. [Capability parity with DSH](#9-capability-parity-with-dsh)
+10. [Why Rust: expected performance envelope](#10-why-rust-expected-performance-envelope)
+11. [Open design questions](#11-open-design-questions)
 
 ---
 
-## 1. 设计哲学：一切皆插件 + 时空可组合性
+## 1. Design philosophy: everything is a plugin
 
-沿用 DSH 的核心范式，并映射到 Rust 工程现实：
+The paradigm is DSH's; the mechanics are what Rust makes natural.
 
-| 维度 | 原 DSH（Node.js + Web UI） | 本框架（Rust 内核 + Flutter UI） |
-|------|----------------------------|----------------------------------|
-| 内核语言 | TypeScript（约 2700 行内核） | Rust（约 3000 行内核，零成本抽象） |
-| 插件形态 | npm 包 + TS 装饰器 | 动态库（`.so`/`.dylib`/`.dll`）或 WASM 模块 |
-| 热插拔引擎 | Cordis（基于 TS 反射） | **Cordis-RS**（基于 Rust trait 对象 + 生命周期作用域） |
-| UI | 内置 Web（3030 端口） | **Flutter 插件化界面**（可装卸 UI 插件） |
-| 沙箱 | Linux 内核级 | `seccomp`/命名空间 + WASM 沙箱双轨 |
-| 模型绑定 | 近 40 家 | 近 40 家（模型亦为插件） |
+| Dimension | DSH (Node.js + web UI) | superapp (Rust kernel + Flutter UI) |
+|-----------|------------------------|-------------------------------------|
+| Kernel language | TypeScript, ~2 700 lines | Rust — ~460 lines today, ~3 000 budgeted |
+| Plugin artifact | npm package + TS decorators | Static crate today; dynamic library (`.so`/`.dylib`/`.dll`) or WASM module planned |
+| Hot-swap engine | Cordis, via TS reflection | **Cordis-RS**, via trait objects + scoped lifetimes |
+| UI | built-in web app on port 3030 | **Flutter**, with attachable UI plugins ⬜ |
+| Sandbox | OS-level (Linux) | `seccomp`/namespaces **and** a WASM micro-sandbox ⬜ |
+| Model bindings | ~40 providers | providers are plugins; **one echo stub exists so far** |
 
-**时空可组合性（Spatio-Temporal Composability）** 在本框架中的实现：
-- **空间**：每个插件注册到独立的"作用域（Scope）"，插件卸载时其注册的服务、事件、副作用由 Rust 的 RAII / `Drop` 自动反向撤销。
-- **时间**：执行轨迹（Trace）是不可变事件流（Event Sourcing），支持恢复、分叉、回放。
+The contract shift is the substantive one. DSH attaches metadata with decorators and reflects
+over it at load time, so a malformed plugin is a runtime failure. In Cordis-RS a plugin is a
+type implementing `Plugin`, so the same mistake is a compile error — and the price is that
+plugin authors must rebuild against a matching kernel ABI.
+
+### Space/time composability
+
+- **Space.** Each plugin registers into its own `Scope`. Dropping the scope is meant to
+  cascade-release every service, subscription, and handle registered under it — RAII in place
+  of a teardown callback that can be forgotten. Scopes nest today (`Scope::root()`,
+  `Scope::child()`, parents held via `Weak` to avoid cycles); nothing registers disposable
+  resources into one yet, so the release path is untested. 🟡
+- **Time.** A run is an append-only event log, not mutable session state, which is what makes
+  resume, fork, and replay possible at all. `TraceCollector` records plugin lifecycle entries
+  and checkpoints today; agent events do not reach it yet. 🟡
 
 ---
 
-## 2. 总体架构分层
+## 2. Layered architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                     Flutter UI 层（Dart，插件化）                   │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌─────────────────┐ │
-│  │ 会话插件   │ │ 插件市场   │ │ 工作流画布 │ │ 调试/轨迹回放   │ │
-│  └────────────┘ └────────────┘ └────────────┘ └─────────────────┘ │
-│            所有 UI 均为可装卸插件，经 UI-Bridge 通信                │
-└───────────────────────────────┬────────────────────────────────────┘
-                                 │  FFI (flutter_rust_bridge) / gRPC
-┌───────────────────────────────┴────────────────────────────────────┐
-│                      Rust 内核（Cordis-RS）                          │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │  Scope / Service Registry / Event Bus / Lifecycle Manager     │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────┐  │
-│  │ 模型插件 │ │ 工具插件 │ │ 技能插件 │ │ 沙箱插件 │ │ Agent循环插件│  │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────────┘  │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐                  │
-│  │ 存储插件 │ │ 调度插件 │ │ 追踪插件 │ │ 通信插件 │                  │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘                  │
-└───────────────────────────────┬────────────────────────────────────┘
-                                 │  进程隔离 / gRPC
-┌───────────────────────────────┴────────────────────────────────────┐
-│                    沙箱层（安全执行环境）                             │
-│   WASM 微沙箱（工具/技能）  │   OS 级沙箱（seccomp + namespace）     │
-└────────────────────────────────────────────────────────────────────┘
+│                 Flutter UI layer (Dart, pluggable)      ⬜ planned │
+│  ┌───────────┐ ┌───────────┐ ┌────────────┐ ┌─────────────────┐  │
+│  │ chat /    │ │ plugin    │ │ workflow   │ │ trace replay /  │  │
+│  │ session   │ │ market    │ │ canvas     │ │ debugger        │  │
+│  └───────────┘ └───────────┘ └────────────┘ └─────────────────┘  │
+│     every panel is an attachable plugin, reached only through    │
+│     the UI-Bridge                                                │
+└─────────────────────────────┬────────────────────────────────────┘
+                              │  FFI (flutter_rust_bridge) or gRPC
+┌─────────────────────────────┴────────────────────────────────────┐
+│                    Rust kernel (Cordis-RS)              ✅ boots  │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │ Scope · ServiceRegistry · EventBus · LifecycleManager      │  │
+│  │ PluginLoader · TraceCollector                              │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌─────────┐ ┌──────────────┐  │
+│  │ model  │ │ tool   │ │ skill  │ │ sandbox │ │ agent-loop   │  │
+│  └────────┘ └────────┘ └────────┘ └─────────┘ └──────────────┘  │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐                  │
+│  │ storage│ │ sched. │ │ tracer │ │ transport│    ⬜ none built  │
+│  └────────┘ └────────┘ └────────┘ └──────────┘                  │
+└─────────────────────────────┬────────────────────────────────────┘
+                              │  process isolation / gRPC
+┌─────────────────────────────┴────────────────────────────────────┐
+│                Sandbox layer (execution isolation)      ⬜ planned │
+│  WASM micro-sandbox (tools, skills) │ OS sandbox (seccomp, etc.)  │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+Only the middle box exists. The two example plugins (`model-echo`, `tool-bash`) are linked
+statically into the boot example and their `activate` is a no-op.
 
 ---
 
-## 3. Rust 内核（Cordis-RS）
+## 3. The Rust kernel (Cordis-RS)
 
-### 3.1 内核职责（约 3000 行，零业务）
+### 3.1 Responsibilities
 
-内核只负责"让插件能安全地组合在一起"，自身不含任何 Agent 业务逻辑：
+The kernel's only job is making plugins safely composable. It holds no agent business logic —
+no prompt assembly, no tool dispatch policy, no model selection.
 
-- **Scope（作用域）**：插件的隔离容器，`Arc<Scope>` 共享，卸载时级联 `drop`。
-- **Service Registry（服务注册表）**：类型化服务（`TypeId` → 实例）注册/反注册。
-- **Event Bus（事件总线）**：发布/订阅，支持同步与异步通道（`tokio`）。
-- **Lifecycle Manager（生命周期管理器）**：插件加载、激活、暂停、卸载、热替换。
-- **Plugin Loader（插件加载器）**：从动态库或 WASM 中解析 `Plugin` trait 实现并实例化。
-- **Trace Collector（轨迹收集器）**：所有事件的不可变记录，供 UI 回放。
+| Subsystem | Module | Role | Status |
+|-----------|--------|------|--------|
+| `Scope` | `scope.rs` | Nested isolation container; `Arc<Scope>`, cascade drop | ✅ nesting, 🟡 teardown |
+| `ServiceRegistry` | `registry.rs` | `TypeId`-keyed service lookup (`anymap2`), values stored as `Arc<T>` | ✅ |
+| `EventBus` | `event_bus.rs` | Pub/sub over `tokio::sync::broadcast`, 1 024-slot buffer | ✅ transport, 🟡 trace wiring |
+| `LifecycleManager` | `lifecycle.rs` | load / activate / deactivate / hot swap | ✅ activate, 🟡 deactivate |
+| `PluginLoader` | `loader.rs` | Instantiate a `Plugin` from a dylib or WASM module | 🟡 signatures only |
+| `TraceCollector` | `trace.rs` | Append-only entry log plus snapshot | ✅ |
 
-### 3.2 插件协议（Plugin Trait）
+`Kernel` in `lib.rs` is the aggregate: it owns one `Arc` of each subsystem and is `Clone`, so
+handing the whole kernel to a plugin or to the UI bridge is cheap.
+
+### 3.2 The plugin contract
 
 ```rust
-/// 所有插件必须实现的核心 trait（编译期契约）
+/// Compile-time contract every plugin implements.
 pub trait Plugin: Send + Sync {
-    /// 插件元数据：id、版本、依赖、能力声明
+    /// Identity, version, dependencies, declared capabilities.
     fn manifest(&self) -> &Manifest;
 
-    /// 激活：注册服务、订阅事件、声明副作用
-    fn activate(&self, ctx: &mut PluginContext) -> Result<()>;
+    /// Register services, subscribe to events, declare side effects.
+    fn activate(&self, ctx: &mut PluginContext) -> anyhow::Result<()>;
 
-    /// 停用：反向撤销（由 Scope Drop 保证自动执行）
-    fn deactivate(&self, ctx: &mut PluginContext) -> Result<()> { Ok(()) }
+    /// Reverse those registrations. Scope drop is meant to be the backstop,
+    /// not the primary path — see the caveat below.
+    fn deactivate(&self, _ctx: &mut PluginContext) -> anyhow::Result<()> { Ok(()) }
 }
 
-/// 插件上下文：注入内核能力
+/// Kernel capabilities handed to a plugin. Shared references: the registry and
+/// bus are internally synchronised (`RwLock`), so activation needs no `&mut`.
 pub struct PluginContext<'a> {
     pub scope: &'a Scope,
-    pub services: &'a mut ServiceRegistry,
+    pub services: &'a ServiceRegistry,
     pub events: &'a EventBus,
     pub tracing: &'a TraceCollector,
 }
 ```
 
-### 3.3 安全热插拔（替代 Cordis 的 TS 反射机制）
+`Capability` is a closed enum (`ModelProvider`, `Tool`, `Skill`, `Sandbox`, `AgentLoop`,
+`Storage`, `Scheduler`, `Tracer`, `Ui`) used for dependency resolution and conflict detection.
+`Manifest.dependencies` is declared but never read — there is no DAG solver, so load order is
+whatever the caller chooses. 🟡
 
-- 插件以 **动态库** 或 **WASM** 形式提供，`extern "C"` 导出 `create_plugin() -> Box<dyn Plugin>`。
-- 加载时进入独立 `Scope`；卸载时 `Scope` 被 `drop`，其持有的服务句柄、事件订阅、打开的文件/连接全部按 RAII 自动释放（对应 Cordis 的"副作用自动撤销"）。
-- 支持 **模型在运行时现场写 Rust/WASM 插件并挂载、用完拆卸**（对应 DSH 的"模型给自己挂插件"）。
+> **Caveat worth stating plainly.** `LifecycleManager::deactivate(id)` removes the plugin from
+> the active table and records a trace entry, but does **not** call `Plugin::deactivate`, and
+> nothing registers resources into a `Scope`. So neither teardown mechanism runs today:
+> anything a plugin registers in `activate` lives until the process exits. "Side effects are
+> revoked automatically" is the design, not present behavior.
 
-### 3.4 四种工作模式（对应 DSH）
+### 3.3 Hot swap
 
-| 模式 | 实现方式（Rust 插件组合） |
-|------|--------------------------|
-| 标准模式 | 加载 `agent-loop-standard` + `tool-fs` + `tool-shell` + `tool-web` + `skill-*` |
-| PTC 模式 | 加载 `code-mode-sdk`（用 Rust/WASM 程序组合多步工具调用） |
-| 极简模式 | 仅 `tool-bash` + `tool-str-replace`（接近"裸奔"，用于基准测试） |
-| 创造模式 | 运行时动态调试插件组合，保存为自定义 Agent 预设 |
+The intended mechanism, replacing Cordis's TS reflection:
+
+1. A plugin ships as a dynamic library or WASM module exporting
+   `extern "C" fn create_plugin() -> Box<dyn Plugin>`.
+2. Loading it creates a dedicated child `Scope`.
+3. Unloading drops that `Scope`, releasing service handles, subscriptions, and open
+   files/sockets by RAII, then `dlclose`s the library.
+
+Both `PluginLoader::load_from_dylib` and `load_from_wasm` currently `bail!` with a pointer back
+to this section; `libloading` and `wasmtime` are not yet dependencies. 🟡
+
+Two problems have to be solved before dylib loading is sound, and neither is solved here:
+
+- **ABI stability.** `Box<dyn Plugin>` has no stable layout across compiler versions or crate
+  versions. Passing it over an `extern "C"` boundary is unsound unless plugin and kernel are
+  built by the same toolchain against the same kernel crate. The realistic fixes are a
+  C-compatible vtable (e.g. `abi_stable` / `stabby`) or a version handshake that refuses
+  mismatched plugins. Until then, treat dylib loading as same-build-only.
+- **Unload safety.** `dlclose` while any code, data, or spawned task from the library is still
+  reachable is undefined behavior. This needs the loader to keep the `Library` alive at least
+  as long as the plugin object, and to join or cancel tasks the plugin spawned.
+
+WASM has neither problem — the boundary is already defined and instances are isolated — at the
+cost of a narrower host interface. That asymmetry is the main argument for making WASM the
+default plugin format and dylibs the escape hatch for native performance.
+
+### 3.4 The four operating modes ⬜
+
+Modes are plugin sets, not kernel features; the composition is what varies.
+
+| Mode | Plugin composition |
+|------|--------------------|
+| Standard | `agent-loop-standard` + `tool-fs` + `tool-shell` + `tool-web` + `skill-*` |
+| PTC (programmatic tool calling) | `code-mode-sdk` — a Rust/WASM program composes multi-step tool calls |
+| Minimal | `tool-bash` + `tool-str-replace` only; a near-bare baseline for benchmarking |
+| Creative | Compose and reload plugins live, then save the set as a named agent preset |
+
+None of these plugins exist yet.
 
 ---
 
-## 4. 插件分类与契约示例
+## 4. Plugin categories and contracts
 
-### 4.1 模型插件（模型中立）
+Domain traits specialise `Plugin`. **None of the sub-traits below are in the tree yet** — they
+are the proposed shapes. 🟡
+
+### 4.1 Model plugins
 
 ```rust
 pub trait ModelProvider: Plugin {
@@ -121,40 +218,54 @@ pub trait ModelProvider: Plugin {
     fn supports(&self, cap: Capability) -> bool;
 }
 ```
-已适配 DeepSeek / OpenAI / Anthropic / Google / Kimi 等近 40 家，统一为内部 `ChatRequest/ChatChunk` 协议。
 
-### 4.2 工具插件
+Providers normalise to one internal `ChatRequest`/`ChatChunk` pair, which is what keeps the
+kernel model-neutral. DSH ships ~40 provider bindings; superapp ships `model-echo`, a stub that
+implements `Plugin` and nothing else. Porting the provider set is roadmap item 6.
+
+Design note: streaming makes the return type the hard part. `AsyncStream<ChatChunk>` above is
+shorthand — the concrete choice is between a boxed `Stream` (object-safe, allocates) and an
+associated type (zero-cost, breaks `dyn ModelProvider`). Since the registry stores plugins as
+trait objects, the boxed form is the likely answer.
+
+### 4.2 Tool plugins
 
 ```rust
 pub trait Tool: Plugin {
-    fn schema(&self) -> ToolSchema;          // JSON Schema 描述
+    fn schema(&self) -> ToolSchema;                                   // JSON Schema
     fn invoke(&self, args: Value, sandbox: &Sandbox) -> Result<Value>;
 }
 ```
 
-### 4.3 技能 / 会话 / 沙箱 / 存储 / 调度 / 追踪插件
+Taking `&Sandbox` as a parameter rather than letting the tool reach for the filesystem is
+deliberate: a tool cannot execute unsandboxed by forgetting to opt in.
 
-均以独立 trait + 独立动态库存在，可自由替换（如 `sandbox-wasm` ↔ `sandbox-nspawn`）。
+### 4.3 Skill, session, sandbox, storage, scheduler, and tracer plugins
 
----
-
-## 5. 安全沙箱（双轨）
-
-| 沙箱类型 | 适用 | 机制 |
-|----------|------|------|
-| WASM 微沙箱 | 工具/技能代码 | `wasmtime` + 能力授权（文件/网络白名单） |
-| OS 级沙箱 | Shell / 重型命令 | Linux `seccomp-BPF` + `namespaces` + `landlock`；Windows/macOS 用平台等价物 |
-
-对应 DSH"确保 Agent 操作文件、执行命令不越界"。
+Each gets its own trait and its own artifact, so implementations swap freely —
+`sandbox-wasm` ↔ `sandbox-nspawn` with no kernel change.
 
 ---
 
-## 6. Flutter 插件化 UI（用户界面亦为插件）
+## 5. Sandboxing (two tracks) ⬜
 
-UI 不再是一套内置 Web，而是 **Flutter 插件体系**：
+| Track | Used for | Mechanism |
+|-------|----------|-----------|
+| WASM micro-sandbox | tool and skill code | `wasmtime` + capability grants (filesystem/network allowlists) |
+| OS-level sandbox | shell and heavyweight commands | Linux `seccomp-bpf` + namespaces + Landlock; `sandbox-exec` on macOS, AppContainer on Windows |
 
-- **UI-Bridge**：Flutter 侧经 `flutter_rust_bridge` 调用内核，内核经事件总线推送状态。
-- **UI 插件契约**：
+This covers DSH's guarantee that an agent's file and command operations stay inside their
+authorised boundary. Neither track is implemented: `tool-bash` is a no-op stub, so nothing is
+confined right now. Until the OS track lands, any real tool plugin inherits the full privileges
+of the host process — which is the reason not to point this kernel at untrusted input yet.
+
+---
+
+## 6. Flutter plugin UI ⬜
+
+Where DSH's web UI is built in and started with `npx @deepseek-ai/dsh web`, superapp plans a
+**Flutter shell** in which interface surfaces are attachable plugins — chat and trace-replay
+sit on the same footing as a third-party dashboard.
 
 ```dart
 abstract class UiPlugin {
@@ -165,163 +276,252 @@ abstract class UiPlugin {
 }
 ```
 
-- **内置 UI 插件**：
-  - 会话插件（聊天/工具调用可视化）
-  - 插件市场（浏览、安装、卸载内核 & UI 插件）
-  - 工作流画布（编排 Agent 循环与工具链）
-  - 轨迹回放（读取 Trace，恢复/分叉/回放运行过程）
-  - 设置/密钥管理
-- **跨平台**：同一套 Flutter 代码编译到 Windows / macOS / Linux / Android / iOS。
+The bridge talks to the Rust kernel via `flutter_rust_bridge` (code-generated FFI, the low-
+ceremony path) or hand-authored `dart:ffi`, or over gRPC for out-of-process layouts. The kernel
+pushes state changes back through `EventBus`; UI plugins subscribe to the event stream and
+react.
+
+**Planned built-in UI plugins:**
+
+- Chat / session view (message list, tool-call visualisations)
+- Plugin market (browse, install, remove kernel and UI plugins)
+- Workflow canvas (visual agent-loop and tool-chain editor)
+- Trace replay (read the `TraceCollector` log, scrub through timeline, fork)
+- Settings / secret manager
+
+The same Flutter tree compiles to Windows, macOS, Linux, Android, and iOS. That's the headline
+reason for picking Flutter: a desktop harness and a mobile app from one codebase, where a web
+UI would need separate webview/electron packaging for native use.
+
+**None of the above exists yet.** There is no `ui/` directory, no bridge code, no
+`pubspec.yaml`. Roadmap item 5 is building the skeleton.
 
 ---
 
-## 7. 全链路可追溯
+## 7. End-to-end traceability 🟡
 
-- 内核 `TraceCollector` 以 **不可变事件流** 记录：系统提示词、思维链、工具调用及结果、子 Agent 调度、上下文注入。
-- Flutter 轨迹回放插件消费该流，支持时间轴拖拽、断点恢复、分支分叉（对应 DSH 的"全链路可追溯、可回放"）。
+The kernel's `TraceCollector` is meant to record every system prompt, thought, tool call,
+result, subagent spawn, and context injection as an immutable event stream. A Flutter trace-
+replay plugin consumes that stream and drives a timeline scrubber, breakpoint-resume, and
+branch-fork controls.
+
+What exists: `TraceCollector` logs `PluginLoaded`, `PluginUnloaded`, and `Checkpoint` entries.
+What's missing: `EventBus::publish` does not write to the trace. The boot example fires
+`Event::Thought`, yet the trace ends up with three entries (two plugin loads, one checkpoint),
+not four. Closing that loop is roadmap item 1.
 
 ---
 
-## 8. 工程结构（建议）
+## 8. Repository layout
 
 ```
 superapp/
-├── kernel/                 # Rust 内核（Cordis-RS），~3000 行
-│   ├── scope.rs
-│   ├── registry.rs
-│   ├── event_bus.rs
-│   ├── lifecycle.rs
-│   ├── loader.rs           # 动态库 / WASM 加载
-│   └── trace.rs
-├── plugins/                # Rust 插件（各为独立 crate / 动态库）
-│   ├── model-*             # 模型插件
-│   ├── tool-*              # 工具插件
-│   ├── sandbox-*           # 沙箱插件
-│   ├── agent-loop-*        # Agent 循环插件
-│   └── ...
-├── ui/                     # Flutter 应用
-│   ├── lib/
-│   │   ├── bridge/         # flutter_rust_bridge 生成层
-│   │   ├── ui_plugins/     # Flutter UI 插件
-│   │   └── core/
-│   └── pubspec.yaml
-├── proto/                  # FFI / gRPC 契约（.proto）
-└── ARCHITECTURE.md
+├── Cargo.toml              # workspace root: kernel + plugin crates
+├── rust-toolchain.toml     # pinned toolchain (currently stable)
+├── ARCHITECTURE.md         # this document
+├── README.md               # status and quick start
+├── kernel/                 # Rust kernel, crate `cordis-rs`, lib `cordis_rs`
+│   ├── Cargo.toml
+│   ├── src/
+│   │   ├── lib.rs          # `Kernel` aggregate
+│   │   ├── plugin.rs       # `Plugin` trait, `Manifest`, `Capability`, `PluginContext`
+│   │   ├── scope.rs        # `Scope` — nested container, RAII teardown ✅🟡
+│   │   ├── registry.rs     # `ServiceRegistry` — `TypeId` → `Arc<T>` ✅
+│   │   ├── event_bus.rs    # `EventBus` — tokio broadcast pub/sub ✅
+│   │   ├── lifecycle.rs    # `LifecycleManager` — activate / deactivate ✅🟡
+│   │   ├── loader.rs       # `PluginLoader` — dylib / WASM stubs 🟡
+│   │   └── trace.rs        # `TraceCollector` — append-only log ✅
+│   └── examples/boot.rs    # end-to-end boot example ✅
+├── plugins/
+│   ├── model-echo/         # example model plugin (`model.echo`)
+│   │   ├── Cargo.toml
+│   │   └── src/lib.rs      # `EchoModel` — implements `Plugin`, activate is a no-op ✅
+│   └── tool-bash/          # example tool plugin (`tool.bash`)
+│       ├── Cargo.toml
+│       └── src/lib.rs      # `BashTool` — implements `Plugin`, activate is a no-op ✅
+└── ui/                     # ⬜ Flutter workspace — does not exist yet
+    ├── pubspec.yaml
+    ├── lib/
+    │   ├── bridge/         # flutter_rust_bridge codegen output
+    │   ├── ui_plugins/     # Flutter UI plugins
+    │   └── core/
+    └── proto/              # ⬜ FFI / gRPC contracts if the bridge needs explicit schemas
 ```
 
----
-
-## 9. 与原 DSH 的能力对照
-
-| 能力 | DSH（Node.js + Web） | 本框架（Rust + Flutter） |
-|------|----------------------|--------------------------|
-| 一切皆插件 | ✅ | ✅ |
-| 安全热插拔 | Cordis（TS 反射） | Cordis-RS（trait + Scope/Drop） |
-| 模型中立 | 近 40 家 | 近 40 家（同协议） |
-| 轻量内核 | 2700+ 行 | 3000+ 行（Rust） |
-| 安全沙箱 | Linux 内核级 | WASM + OS 级双轨 |
-| 全链路可追溯 | ✅ | ✅（Trace 事件流） |
-| 四种模式 | ✅ | ✅ |
-| 界面 | 内置 Web（3030） | 插件化 Flutter（跨端） |
-| 启动 | `npx @deepseek-ai/dsh web` | 原生二进制 / 移动 App |
+Total Rust LOC today (kernel + two plugin stubs): **462 lines**. The budget is ~3 000; most of
+the headroom is for dependency resolution, scope-resource tracking, dylib/WASM loading, and the
+trait impls for domain sub-traits once those are added.
 
 ---
 
-## 10. 总结
+## 9. Capability parity with DSH
 
-本框架将 DeepSeek Harness 的范式革新完整迁移到 Rust + Flutter 技术栈：
-- **Rust 内核** 以零成本抽象和 RAII 提供比 TS 更确定的内存安全与热插拔保证；
-- **Flutter 插件化 UI** 让"界面本身也是插件"，一套代码覆盖全平台；
-- 保留 DSH 的全部核心主张——模型中立、一切皆插件、安全沙箱、全链路可追溯、四种工作模式。
+| Feature | DSH (Node.js + web UI) | superapp (Rust + Flutter) |
+|---------|------------------------|---------------------------|
+| Everything is a plugin | ✅ | ✅ contract, 🟡 dylib/WASM loading |
+| Hot swap | Cordis (TS reflection) | Cordis-RS (trait + Scope/Drop) 🟡 |
+| Model neutral | ~40 providers | ~40 planned, **1 stub today** |
+| Lightweight kernel | 2 700+ lines TS | 460 lines Rust today, 3 000 budgeted |
+| Secure sandbox | OS-level (Linux) | WASM + OS dual-track ⬜ |
+| End-to-end trace | ✅ | ✅ infra, 🟡 EventBus wiring |
+| Four operating modes | ✅ | ⬜ plugin sets not built |
+| Interface | built-in web (port 3030) | Flutter plugin UI ⬜ |
+| Launch command | `npx @deepseek-ai/dsh web` | native binary / mobile app ⬜ |
+
+The mechanics are in place for the top three; most of the rest is planned.
 
 ---
 
-## 11. 性能差距分析：Rust 内核 vs Node.js 内核（DeepSeek Harness）
+## 10. Why Rust: expected performance envelope
 
-从七个维度量化对比"把 DSH 的 Node.js 内核换成 Rust 内核"后的性能差距。带 ⚡ 的为 Rust 明显占优项。
+Seven dimensions where swapping Node.js for Rust is expected to shift the performance
+characteristics. Dimensions marked ⚡ are the ones where Rust wins outright; the rest are more
+situational.
 
-### 11.1 启动时间
+### 10.1 Startup time ⚡
 
-| 项 | Node.js (DSH) | Rust (Cordis-RS) |
-|----|---------------|------------------|
-| 运行时启动 | V8 冷启动 + JIT 预热，~150–400 ms | 原生二进制，无 VM，~5–20 ms |
-| 插件加载 | 解析 npm 包 + TS 装饰器反射 | `dlopen` 动态库 / WASM 实例化，无反射开销 |
-| 整体冷启动 | 数百 ms 级（npx 还要拉包） | 数十 ms 级 |
+| | Node.js (DSH) | Rust (Cordis-RS) |
+|-|---------------|------------------|
+| Runtime boot | V8 cold start + JIT warmup, ~150–400 ms | native binary, no VM, ~5–20 ms |
+| Plugin load | parse npm package + TS decorator reflection | `dlopen` or WASM instantiation, no reflection overhead |
+| Overall cold start | hundreds of ms (higher if `npx` has to fetch) | tens of ms |
 
-**结论**：Rust 冷启动快 **1–2 个数量级**。对"极简模式做基准测试""创造模式频繁重载"场景尤其关键。
+**Implication:** Rust cold start is **10–50× faster**. Most visible for the minimal mode
+(lightweight benchmarking) and creative mode (frequent reload).
 
-### 11.2 内存占用 ⚡
+### 10.2 Resident memory ⚡
 
-| 项 | Node.js | Rust |
-|----|---------|------|
-| 运行时基础开销 | V8 堆 + JIT 区，常驻 50–150 MB | 仅内核 + 插件，常驻 5–20 MB |
-| GC 行为 | 周期性 STW 停顿，堆越大越明显 | 编译期所有权，无 GC，无停顿 |
-| 长会话/大上下文 | 上下文膨胀 → 堆增长 → GC 抖动 | 栈/堆精确控制，可零拷贝借用 |
+| | Node.js | Rust |
+|-|---------|------|
+| Runtime baseline | V8 heap + JIT working set, 50–150 MB resident | kernel + plugins only, 5–20 MB |
+| GC behavior | periodic stop-the-world pauses, proportional to heap size | compile-time ownership, no GC, no pauses |
+| Long sessions / large contexts | context growth → heap growth → GC churn | stack/heap precisely controlled, zero-copy borrows possible |
 
-**结论**：常驻内存少 **一个数量级**；长任务下 Node 的 GC 停顿会让 Agent 响应出现"卡顿尖峰"，Rust 平滑。
+**Implication:** Rust holds **5–10× less** memory at rest. In long-running tasks, Node's GC
+introduces latency spikes; Rust's response curve stays flat.
 
-### 11.3 并发与多 Agent 编排 ⚡
+### 10.3 Concurrency and multi-agent orchestration ⚡
 
-| 项 | Node.js | Rust |
-|----|---------|------|
-| 模型 | 单线程事件循环 + 异步（受限于 V8 单线程） | `tokio` 多核 M:N 调度，真并行 |
-| 子 Agent 并行 | 受事件循环吞吐制约，CPU 密集任务阻塞 | 多核并行 spawn，CPU/IO 任务隔离 |
-| 多模型并发调用 | 受单线程调度上限 | 线性扩展至多核 |
+| | Node.js | Rust |
+|-|---------|------|
+| Parallelism model | single-threaded event loop + async (V8 single-thread bound) | `tokio` M:N scheduler, true parallelism across cores |
+| Subagent parallelism | constrained by event-loop throughput; CPU-heavy tools starve the loop | multi-core linear scaling, CPU/IO tasks isolated |
+| Concurrent model calls | single-thread scheduling ceiling | scales linearly to available cores |
 
-**结论**：标准模式里"子 Agent + 工具并行"时，Rust 在多核上可线性扩展；Node 在 CPU 密集工具调用（如大文件解析）时会饿死事件循环。差距在 **N 核机上可达 N 倍**。
+**Implication:** Standard-mode workloads with "subagent + tool parallelism" scale to N cores
+under Rust; Node saturates one core. CPU-intensive tool calls (large file parsing, compression)
+block the event loop in Node; Rust isolates them. **Speedup on an N-core machine can reach N×.**
 
-### 11.4 插件热插拔开销
+### 10.4 Hot-swap determinism ⚡ (once implemented)
 
-| 项 | Node.js (Cordis) | Rust (Cordis-RS) |
-|----|------------------|------------------|
-| 卸载副作用撤销 | 依赖 TS 装饰器登记的清理回调 | RAII `Drop` 确定性执行，编译期保证 |
-| 悬挂引用风险 | 运行时可能漏注销 → 内存泄漏 | 编译期借用检查，类型系统排除悬挂 |
-| 热替换延迟 | 卸载+重载模块图，含 GC | `Scope` drop + `dlclose`，确定性 |
+| | Node.js (Cordis) | Rust (Cordis-RS) |
+|-|------------------|------------------|
+| Side-effect teardown | relies on cleanup callbacks registered via TS decorators | RAII `Drop`, enforced at compile time |
+| Dangling-reference risk | can leak at runtime if de-registration is forgotten | borrow checker rules it out statically |
+| Hot-replace latency | unload + reload module graph, involves GC | `Scope` drop + `dlclose`, deterministic |
 
-**结论**：Rust 把"安全热插拔"从**运行时约定**变成**编译期保证**，无泄漏、无不确定停顿。
+**Implication:** Rust turns "safe hot swap" from a **runtime convention** into a **compile-time
+guarantee**. No leaks, no unpredictable pauses.
 
-### 11.5 工具执行（Agent 真正"动手"的部分）⚡
+### 10.5 Tool execution ⚡
 
-- **纯计算/解析工具**（JSON/代码解析、向量化、压缩）：Rust 比 Node **快 5–50 倍**（无 JIT 预热、无 GC）。
-- **IO 密集型工具**（读写、网络）：两者接近，但 Rust 无事件循环瓶颈，尾部延迟更低。
-- **PTC 模式**（程序化多步工具组合）：若用 WASM 而非 TS 跑组合逻辑，Rust/WASM 接近原生速度，Node 仍是解释执行。
+- **Compute-bound tools** (JSON/code parsing, embedding, compression): Rust is **5–50× faster**
+  than Node (no JIT warmup, no GC interruption).
+- **IO-bound tools** (file reads, network): roughly tied, but Rust has no event-loop bottleneck
+  so tail latency is lower.
+- **PTC mode** (programmatic multi-step tool composition): if the composition logic runs in WASM
+  instead of interpreted TS, Rust/WASM approaches native speed; Node stays interpreted.
 
-### 11.6 沙箱开销
+### 10.6 Sandbox overhead (once implemented)
 
-| 项 | Node.js (DSH) | Rust (Cordis-RS) |
-|----|---------------|------------------|
-| 沙箱实现 | Linux 内核级（与运行时正交） | WASM 微沙箱 + OS 级 |
-| WASM 工具 | 需额外桥接到 Node | `wasmtime` 原生嵌入，近零桥接成本 |
-| 上下文切换 | 进程/容器级，较重 | WASM 实例轻量，切换 μs 级 |
+| | Node.js (DSH) | Rust (Cordis-RS) |
+|-|---------------|------------------|
+| Sandbox mechanism | OS-level (orthogonal to runtime) | WASM micro-sandbox + OS-level |
+| WASM tool bridge | requires extra shim to Node | `wasmtime` embedded natively, near-zero bridge cost |
+| Context switch | process/container-level, heavyweight | WASM instance, microseconds |
 
-**结论**：Rust 内嵌 `wasmtime` 让"工具级微沙箱"几乎零成本，比 Node 侧外挂 WASM 更高效。
+**Implication:** Rust's in-process `wasmtime` makes tool-level micro-sandboxing practically
+free. Node's external WASM integration is heavier.
 
-### 11.7 能耗与部署 ⚡
+### 10.7 Power and deployment footprint ⚡
 
-| 项 | Node.js | Rust |
-|----|---------|------|
-| 移动端/边缘 | 需带 V8，体积大、耗电 | 单二进制，体积小、省电 |
-| 移动 App 集成 | 需内嵌 JS 引擎 | 直接 FFI，无额外运行时 |
+| | Node.js | Rust |
+|-|---------|------|
+| Mobile / edge | needs embedded V8, large binary, high power draw | single native binary, small, efficient |
+| Mobile app integration | requires bundled JS engine | direct FFI, no extra runtime |
 
-**结论**：选 Flutter 做 UI 后，Rust 原生二进制可无缝打包进 App，省去移动端 V8 体积与功耗开销——这是 Node 方案在移动端**无法补齐**的硬伤。
+**Implication:** Flutter + Rust packages as a self-contained mobile app with no JS engine tax.
+Node's binary size and power overhead on mobile are deal-breakers for long-running or battery-
+constrained use.
 
-### 11.8 综合差距速览
+### 10.8 Summary table
 
-| 维度 | Rust 相对 Node 的提升 |
-|------|----------------------|
-| 冷启动 | 快 10–50× |
-| 常驻内存 | 少 5–10× |
-| 多 Agent 并行 | 多核线性扩展（N×） |
-| 计算型工具 | 快 5–50× |
-| 热插拔确定性 | 编译期保证 vs 运行时约定 |
-| 移动端部署 | 原生可行 vs 需带引擎 |
+| Dimension | Rust improvement over Node |
+|-----------|----------------------------|
+| Cold start | 10–50× faster |
+| Resident memory | 5–10× smaller |
+| Multi-agent parallelism | N× on N cores (Node: ~1×) |
+| Compute-heavy tools | 5–50× faster |
+| Hot-swap determinism | compile-time guarantee vs runtime convention |
+| Mobile deployment | native-capable vs needs embedded engine |
 
-### 11.9 何时差距"不明显"
+### 10.9 When the difference doesn't matter
 
-- **瓶颈在 LLM 网络延迟**：模型响应 1–10s 时，内核快慢被淹没，此时差距感知弱。
-- **工具全为外部 API 调用**：IO 等待主导，内核语言差异被掩盖。
-- **单 Agent 低频交互**：并发优势无法体现。
+- **Bottleneck is LLM network latency.** If the model takes 1–10 seconds to respond, kernel
+  speed is drowned out.
+- **Tools are all external API calls.** IO wait dominates; kernel language is irrelevant.
+- **Single agent, low interaction rate.** Concurrency advantage never shows up.
 
-### 11.10 一句话总结
+### 10.10 One-sentence summary
 
-Rust 内核在**启动、内存、并发、计算型工具、移动部署**上相对 Node.js 有数量级优势，且把"安全热插拔"从运行时约定升级为编译期保证；但当 Agent 瓶颈在**网络/模型延迟**时，内核语言差异对用户感知影响有限。对"创造模式频繁重载 + 多 Agent 并行 + 移动端"三位一体的场景，Rust + Flutter 的组合收益最大。
+Rust delivers order-of-magnitude wins in **startup, memory, concurrency, compute-bound tools,
+and mobile deployment**, and promotes hot-swap safety from a runtime discipline to a compile-
+time invariant. But when the agent is **network/model-latency bound**, kernel performance has
+limited impact on perceived responsiveness. The triple combination of *creative mode (frequent
+reload) + multi-agent parallelism + mobile targets* is where Rust + Flutter pays off most.
+
+---
+
+## 11. Open design questions
+
+These are unresolved choices, not implementation gaps.
+
+1. **ABI stability for dylib plugins.** `Box<dyn Plugin>` over `extern "C"` is undefined
+   behavior unless both sides are built by the same toolchain. Solutions: enforce a version
+   handshake and reject mismatched builds (pragmatic, limits reuse); adopt a stable-ABI crate
+   like `abi_stable` (heavier, more portable); or make WASM the default and treat dylibs as
+   same-build-only (the current lean).
+
+2. **Async trait shape for `ModelProvider::chat`.** The return type is an async stream.
+   Concrete choice: boxed `Stream` trait object (object-safe, runtime cost) or associated type
+   (zero-cost, breaks `dyn ModelProvider`). Since the registry stores plugins as trait objects,
+   boxing is likely.
+
+3. **EventBus → TraceCollector wiring.** Should `EventBus::publish` call `TraceCollector`
+   directly (tight coupling, simple), or should the trace collector subscribe as a listener
+   (loose coupling, one more indirection)? Listener is architecturally cleaner, but synchronous
+   recording is easier to reason about.
+
+4. **Scope-resource tracking.** How does a plugin declare "this handle belongs to scope S, drop
+   it when S is dropped"? Two paths: wrap every resource in a scope-aware guard (boilerplate),
+   or have the scope hold a `Vec<Box<dyn Drop>>` and let plugins push disposers (type-erased,
+   simpler). Neither is sketched yet.
+
+5. **Dependency resolution.** Should the lifecycle manager topologically sort plugin loads by
+   `Manifest.dependencies`, or leave that to the caller? Sorting is safer but means the kernel
+   needs a DAG solver; manual ordering is flexible but error-prone.
+
+6. **Bridge protocol (Rust ↔ Flutter).** `flutter_rust_bridge` generates the FFI automatically
+   from annotated Rust signatures (low ceremony, opaque wire format). Hand-authored `dart:ffi`
+   gives full control but is verbose. gRPC over localhost decouples the processes but adds
+   latency. The decision affects mobile packaging: FFI and `flutter_rust_bridge` let the kernel
+   link into the app; gRPC requires a sidecar or background service.
+
+None of these block the next roadmap items, so they're deferred until the decision has to be
+made.
+
+---
+
+**Document status:** This is a design spec and a roadmap, not a user manual. The kernel boots
+and the contracts compile; most behavior is planned. See [`README.md`](./README.md) for the
+current implementation state and known gaps.
