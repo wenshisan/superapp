@@ -1,0 +1,15 @@
+[package]
+name = "model-echo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cordis-rs = { path = "../../kernel" }
+serde_json = "1"
+anyhow = "1"
+tokio = { version = "1", features = ["sync"] }
+
+[lib]
+name = "model_echo"
+path = "src/lib.rs"

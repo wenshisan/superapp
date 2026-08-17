@@ -1,0 +1,1 @@
+Result<std::sync::RwLockReadGuard<'_, anymap2::Map>, PoisonError<std::sync::RwLockReadGuard<'_, anymap2::Map>>>

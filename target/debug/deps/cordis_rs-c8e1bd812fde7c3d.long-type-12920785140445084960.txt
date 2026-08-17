@@ -1,0 +1,1 @@
+Result<std::sync::RwLockWriteGuard<'_, HashMap<std::string::String, ActivePlugin>>, PoisonError<std::sync::RwLockWriteGuard<'_, HashMap<std::string::String, ActivePlugin>>>>

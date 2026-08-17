@@ -1,0 +1,14 @@
+C:\Users\LSM\CodeBuddy\superapp\target\debug\deps\serde-072c4b89d156adc5.d: C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\lib.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\integer128.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\mod.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\de.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\ser.rs C:\Users\LSM\CodeBuddy\superapp\target\debug\build\serde-3c6b411e255f4cf4\out/private.rs
+
+C:\Users\LSM\CodeBuddy\superapp\target\debug\deps\libserde-072c4b89d156adc5.rlib: C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\lib.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\integer128.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\mod.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\de.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\ser.rs C:\Users\LSM\CodeBuddy\superapp\target\debug\build\serde-3c6b411e255f4cf4\out/private.rs
+
+C:\Users\LSM\CodeBuddy\superapp\target\debug\deps\libserde-072c4b89d156adc5.rmeta: C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\lib.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\integer128.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\mod.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\de.rs C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\ser.rs C:\Users\LSM\CodeBuddy\superapp\target\debug\build\serde-3c6b411e255f4cf4\out/private.rs
+
+C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\lib.rs:
+C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\integer128.rs:
+C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\mod.rs:
+C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\de.rs:
+C:\Users\LSM\.cargo\registry\src\mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f\serde-1.0.229\src\private\ser.rs:
+C:\Users\LSM\CodeBuddy\superapp\target\debug\build\serde-3c6b411e255f4cf4\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\LSM\\CodeBuddy\\superapp\\target\\debug\\build\\serde-3c6b411e255f4cf4\\out
