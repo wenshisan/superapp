@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:window_manager/window_manager.dart';
+import 'widgets/window_title_bar.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -8,7 +8,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with WindowListener {
+class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   String _currentTheme = 'indigo';
   ThemeMode _themeMode = ThemeMode.dark;
@@ -27,23 +27,14 @@ class _AppShellState extends State<AppShell> with WindowListener {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    windowManager.addListener(this);
-  }
-
-  @override
-  void dispose() {
-    windowManager.removeListener(this);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
-          _buildCaptionBar(),
+          WindowTitleBar(
+            isDark: _themeMode == ThemeMode.dark,
+            accentColor: _getPrimaryColor(),
+          ),
           Expanded(
             child: Row(
               children: [
@@ -66,87 +57,6 @@ class _AppShellState extends State<AppShell> with WindowListener {
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
         child: const Icon(Icons.chat),
-      ),
-    );
-  }
-
-  Widget _buildCaptionBar() {
-    return GestureDetector(
-      onPanStart: (_) => windowManager.startDragging(),
-      child: Container(
-        height: 32,
-        decoration: BoxDecoration(
-          color: _getSidebarColor(),
-          border: Border(
-            bottom: BorderSide(
-              color: Colors.white.withOpacity(0.05),
-            ),
-          ),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 12),
-            Icon(
-              Icons.smart_toy,
-              size: 14,
-              color: Colors.white.withOpacity(0.8),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'SuperApp',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withOpacity(0.8),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const Spacer(),
-            _buildCaptionButton(
-              icon: Icons.minimize,
-              onPressed: () => windowManager.minimize(),
-            ),
-            _buildCaptionButton(
-              icon: Icons.crop_square,
-              onPressed: () async {
-                if (await windowManager.isMaximized()) {
-                  windowManager.unmaximize();
-                } else {
-                  windowManager.maximize();
-                }
-              },
-            ),
-            _buildCaptionButton(
-              icon: Icons.close,
-              onPressed: () => windowManager.close(),
-              isClose: true,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCaptionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    bool isClose = false,
-  }) {
-    return SizedBox(
-      width: 46,
-      height: 32,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          hoverColor: isClose
-              ? const Color(0xFFE81123)
-              : Colors.white.withOpacity(0.1),
-          child: Icon(
-            icon,
-            size: 14,
-            color: Colors.white.withOpacity(0.8),
-          ),
-        ),
       ),
     );
   }
