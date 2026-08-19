@@ -14,16 +14,8 @@ class _AppShellState extends State<AppShell> {
   ThemeMode _themeMode = ThemeMode.dark;
 
   final List<NavigationItem> _navItems = [
-    NavigationItem(
-      icon: Icons.home,
-      label: 'Home',
-      route: '/home',
-    ),
-    NavigationItem(
-      icon: Icons.task_alt,
-      label: 'Tasks',
-      route: '/tasks',
-    ),
+    NavigationItem(icon: Icons.home, label: 'Home', route: '/home'),
+    NavigationItem(icon: Icons.task_alt, label: 'Tasks', route: '/tasks'),
   ];
 
   @override
@@ -43,9 +35,7 @@ class _AppShellState extends State<AppShell> {
                   child: Column(
                     children: [
                       _buildTopBar(),
-                      Expanded(
-                        child: _buildMainContent(),
-                      ),
+                      Expanded(child: _buildMainContent()),
                     ],
                   ),
                 ),
@@ -96,8 +86,9 @@ class _AppShellState extends State<AppShell> {
                         color: isSelected
                             ? Colors.white
                             : Colors.white.withOpacity(0.6),
-                        fontWeight:
-                            isSelected ? FontWeight.w500 : FontWeight.normal,
+                        fontWeight: isSelected
+                            ? FontWeight.w500
+                            : FontWeight.normal,
                       ),
                     ),
                     onTap: () {
@@ -149,10 +140,7 @@ class _AppShellState extends State<AppShell> {
                 ),
                 Text(
                   'admin@ai-agent.cn',
-                  style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: Colors.white60, fontSize: 11),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -168,19 +156,14 @@ class _AppShellState extends State<AppShell> {
       height: 64,
       decoration: BoxDecoration(
         color: _getCardColor(),
-        border: Border(
-          bottom: BorderSide(color: _getBorderColor()),
-        ),
+        border: Border(bottom: BorderSide(color: _getBorderColor())),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
           const Text(
             'Workbench',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
           const Spacer(),
           IconButton(
@@ -189,9 +172,7 @@ class _AppShellState extends State<AppShell> {
           ),
           IconButton(
             icon: Icon(
-              _themeMode == ThemeMode.dark
-                  ? Icons.dark_mode
-                  : Icons.light_mode,
+              _themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
             ),
             onPressed: () {
               setState(() {
@@ -271,18 +252,12 @@ class _AppShellState extends State<AppShell> {
         children: [
           Text(
             'Good morning, welcome back',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
           ),
           SizedBox(height: 4),
           Text(
             'Here is your overview for today.',
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.grey, fontSize: 14),
           ),
         ],
       ),
@@ -347,11 +322,7 @@ class _AppShellState extends State<AppShell> {
               color: _getPrimaryColor().withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              icon,
-              color: _getPrimaryColor(),
-              size: 20,
-            ),
+            child: Icon(icon, color: _getPrimaryColor(), size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -360,10 +331,7 @@ class _AppShellState extends State<AppShell> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -416,10 +384,7 @@ class _AppShellState extends State<AppShell> {
               const SizedBox(width: 8),
               const Text(
                 'Model API Usage',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
               const Spacer(),
               Container(
@@ -445,17 +410,11 @@ class _AppShellState extends State<AppShell> {
             children: [
               Text(
                 '45.2%',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
               ),
               Text(
                 '45,230 / 100,000 tokens',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 13,
-                ),
+                style: TextStyle(color: Colors.grey, fontSize: 13),
               ),
             ],
           ),
@@ -576,52 +535,48 @@ class _AppShellState extends State<AppShell> {
               const SizedBox(width: 8),
               const Text(
                 'API Market News',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          ...newsItems.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.date,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 11,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14,
-                            ),
+          ...newsItems.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.date,
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            item.description,
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 11,
-                            ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.description,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 11,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -659,10 +614,7 @@ class _AppShellState extends State<AppShell> {
               children: [
                 Text(
                   'Recent Activity',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                 ),
               ],
             ),
@@ -672,8 +624,9 @@ class _AppShellState extends State<AppShell> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: entry.key < activities.length - 1
                   ? BoxDecoration(
-                      border:
-                          Border(bottom: BorderSide(color: _getBorderColor())),
+                      border: Border(
+                        bottom: BorderSide(color: _getBorderColor()),
+                      ),
                     )
                   : null,
               child: Row(
