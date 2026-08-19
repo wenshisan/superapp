@@ -12,6 +12,9 @@ class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   String _currentTheme = 'indigo';
   ThemeMode _themeMode = ThemeMode.dark;
+  bool _isChatOpen = false;
+  final TextEditingController _chatController = TextEditingController();
+  final List<ChatMessage> _messages = [];
 
   final List<NavigationItem> _navItems = [
     NavigationItem(icon: Icons.home, label: 'Home', route: '/home'),
@@ -19,42 +22,72 @@ class _AppShellState extends State<AppShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _messages.add(ChatMessage(
+      text: 'Hello! I am your AI assistant. How can I help you?',
+      isBot: true,
+      timestamp: DateTime.now(),
+    ));
+  }
+
+  @override
+  void dispose() {
+    _chatController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          WindowTitleBar(
-            isDark: _themeMode == ThemeMode.dark,
-            accentColor: _getPrimaryColor(),
-          ),
-          Expanded(
-            child: Row(
-              children: [
-                _buildSidebar(),
-                Expanded(
-                  child: Column(
-                    children: [
-                      _buildTopBar(),
-                      Expanded(child: _buildMainContent()),
-                    ],
-                  ),
+          Column(
+            children: [
+              WindowTitleBar(
+                isDark: _themeMode == ThemeMode.dark,
+                accentColor: _getPrimaryColor(),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    _buildSidebar(),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _buildTopBar(),
+                          Expanded(child: _buildMainContent()),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          if (_isChatOpen) _buildChatDialog(),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        child: const Icon(Icons.chat),
+        onPressed: () {
+          setState(() {
+            _isChatOpen = !_isChatOpen;
+          });
+        },
+        backgroundColor: _getPrimaryColor(),
+        child: Icon(
+          _isChatOpen ? Icons.close : Icons.chat,
+          color: Colors.white,
+        ),
       ),
     );
   }
 
   Widget _buildSidebar() {
-    return Container(
-      width: 240,
+    return Material(
       color: _getSidebarColor(),
+      child: SizedBox(
+      width: 240,
       child: Column(
         children: [
           const SizedBox(height: 16),
@@ -103,6 +136,7 @@ class _AppShellState extends State<AppShell> {
           ),
           _buildUserCard(),
         ],
+      ),
       ),
     );
   }
@@ -756,6 +790,263 @@ class _AppShellState extends State<AppShell> {
         ? const Color(0xFF1E293B)
         : const Color(0xFFF1F5F9);
   }
+
+  Widget _buildChatDialog() {
+    return Positioned(
+      bottom: 96,
+      right: 24,
+      child: Material(
+        elevation: 24,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 360,
+          height: 480,
+          decoration: BoxDecoration(
+            color: _getCardColor(),
+            border: Border.all(color: _getBorderColor()),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              _buildChatHeader(),
+              Expanded(child: _buildChatMessages()),
+              _buildChatInput(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: _getBorderColor())),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: _getPrimaryColor().withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.smart_toy,
+              size: 16,
+              color: _getPrimaryColor(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'AI Assistant',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () {
+              setState(() {
+                _isChatOpen = false;
+              });
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            style: IconButton.styleFrom(
+              minimumSize: const Size(32, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatMessages() {
+    return Container(
+      color: _getBackgroundColor(),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          final message = _messages[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.isBot) ...[
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: _getPrimaryColor().withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.smart_toy,
+                      size: 16,
+                      color: _getPrimaryColor(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _getCardColor(),
+                        border: Border.all(color: _getBorderColor()),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          topRight: Radius.circular(16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        message.text,
+                        style: const TextStyle(fontSize: 14, height: 1.5),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _getPrimaryColor(),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(4),
+                        ),
+                      ),
+                      child: Text(
+                        message.text,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: _getPrimaryColor(),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildChatInput() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: _getBorderColor())),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _chatController,
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                hintStyle: const TextStyle(fontSize: 14),
+                filled: true,
+                fillColor: _themeMode == ThemeMode.dark
+                    ? const Color(0xFF111827)
+                    : Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _getBorderColor()),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _getBorderColor()),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _getPrimaryColor(), width: 2),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+              style: const TextStyle(fontSize: 14),
+              onSubmitted: _sendMessage,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: _getPrimaryColor(),
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => _sendMessage(_chatController.text),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                child: const Icon(
+                  Icons.send,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _sendMessage(String text) {
+    if (text.trim().isEmpty) return;
+
+    setState(() {
+      _messages.add(ChatMessage(
+        text: text.trim(),
+        isBot: false,
+        timestamp: DateTime.now(),
+      ));
+      _chatController.clear();
+
+      // Simulate bot response
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          setState(() {
+            _messages.add(ChatMessage(
+              text: 'Thank you for your message. This is a demo response.',
+              isBot: true,
+              timestamp: DateTime.now(),
+            ));
+          });
+        }
+      });
+    });
+  }
 }
 
 class NavigationItem {
@@ -779,5 +1070,17 @@ class NewsItem {
     required this.date,
     required this.title,
     required this.description,
+  });
+}
+
+class ChatMessage {
+  final String text;
+  final bool isBot;
+  final DateTime timestamp;
+
+  ChatMessage({
+    required this.text,
+    required this.isBot,
+    required this.timestamp,
   });
 }
