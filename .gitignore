@@ -1,2 +1,29 @@
-/target/debug
-/target
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/generated_plugin_registrant.dart
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local settings
+.claude/settings.local.json

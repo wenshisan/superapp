@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en" data-scheme="indigo" class="dark" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Workbench</title>
+    <style id="theme-vars">
+:root {
+  --agent-radius-sm: 6px;
+  --agent-radius-md: 10px;
+  --agent-radius-lg: 16px;
+
+  /* Default indigo scheme — light */
+  --agent-hue: 243;
+  --agent-background: #f8fafc;
+  --agent-foreground: #0f172a;
+  --agent-card: #ffffff;
+  --agent-card-foreground: #0f172a;
+  --agent-popover: #ffffff;
+  --agent-popover-foreground: #0f172a;
+  --agent-primary: hsl(var(--agent-hue) 83% 59%);
+  --agent-primary-foreground: #ffffff;
+  --agent-muted: #f1f5f9;
+  --agent-muted-foreground: #64748b;
+  --agent-border: #e2e8f0;
+  --agent-input: #ffffff;
+  --agent-ring: hsl(var(--agent-hue) 83% 59%);
+  --agent-sidebar: hsl(var(--agent-hue) 45% 12%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 20% 96%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 30% 65%);
+}
+
+/* Color scheme variants — light mode */
+[data-scheme="indigo"] {
+  --agent-hue: 243;
+  --agent-primary: hsl(var(--agent-hue) 83% 59%);
+  --agent-ring: hsl(var(--agent-hue) 83% 59%);
+  --agent-sidebar: hsl(var(--agent-hue) 45% 12%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 20% 96%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 30% 65%);
+}
+
+[data-scheme="ocean"] {
+  --agent-hue: 210;
+  --agent-primary: hsl(var(--agent-hue) 90% 48%);
+  --agent-ring: hsl(var(--agent-hue) 90% 48%);
+  --agent-sidebar: hsl(var(--agent-hue) 55% 14%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 20% 96%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 35% 68%);
+}
+
+[data-scheme="emerald"] {
+  --agent-hue: 155;
+  --agent-primary: hsl(var(--agent-hue) 75% 40%);
+  --agent-ring: hsl(var(--agent-hue) 75% 40%);
+  --agent-sidebar: hsl(var(--agent-hue) 50% 11%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 20% 96%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 30% 65%);
+}
+
+[data-scheme="rose"] {
+  --agent-hue: 346;
+  --agent-primary: hsl(var(--agent-hue) 82% 56%);
+  --agent-ring: hsl(var(--agent-hue) 82% 56%);
+  --agent-sidebar: hsl(var(--agent-hue) 55% 12%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 20% 96%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 35% 70%);
+}
+
+[data-scheme="amber"] {
+  --agent-hue: 32;
+  --agent-primary: hsl(var(--agent-hue) 92% 45%);
+  --agent-primary-foreground: #0f172a;
+  --agent-ring: hsl(var(--agent-hue) 92% 45%);
+  --agent-sidebar: hsl(var(--agent-hue) 50% 12%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 25% 96%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 35% 68%);
+}
+
+/* Dark mode — base */
+[data-theme="dark"] {
+  --agent-background: #0b0f19;
+  --agent-foreground: #e2e8f0;
+  --agent-card: #111827;
+  --agent-card-foreground: #e2e8f0;
+  --agent-popover: #111827;
+  --agent-popover-foreground: #e2e8f0;
+  --agent-muted: #1e293b;
+  --agent-muted-foreground: #94a3b8;
+  --agent-border: #1f2937;
+  --agent-input: #111827;
+  --agent-sidebar: hsl(var(--agent-hue) 40% 6%);
+  --agent-sidebar-foreground: hsl(var(--agent-hue) 20% 95%);
+  --agent-sidebar-muted: hsl(var(--agent-hue) 25% 55%);
+}
+
+[data-theme="dark"][data-scheme="indigo"] {
+  --agent-primary: hsl(243 75% 65%);
+  --agent-ring: hsl(243 75% 65%);
+  --agent-sidebar: hsl(243 40% 6%);
+  --agent-sidebar-foreground: hsl(243 20% 95%);
+  --agent-sidebar-muted: hsl(243 25% 55%);
+}
+
+[data-theme="dark"][data-scheme="ocean"] {
+  --agent-primary: hsl(210 85% 58%);
+  --agent-ring: hsl(210 85% 58%);
+  --agent-sidebar: hsl(210 45% 8%);
+  --agent-sidebar-foreground: hsl(210 20% 95%);
+  --agent-sidebar-muted: hsl(210 30% 60%);
+}
+
+[data-theme="dark"][data-scheme="emerald"] {
+  --agent-primary: hsl(155 65% 50%);
+  --agent-ring: hsl(155 65% 50%);
+  --agent-sidebar: hsl(155 40% 7%);
+  --agent-sidebar-foreground: hsl(155 20% 95%);
+  --agent-sidebar-muted: hsl(155 25% 58%);
+}
+
+[data-theme="dark"][data-scheme="rose"] {
+  --agent-primary: hsl(346 75% 62%);
+  --agent-ring: hsl(346 75% 62%);
+  --agent-sidebar: hsl(346 45% 8%);
+  --agent-sidebar-foreground: hsl(346 20% 95%);
+  --agent-sidebar-muted: hsl(346 30% 62%);
+}
+
+[data-theme="dark"][data-scheme="amber"] {
+  --agent-primary: hsl(32 90% 52%);
+  --agent-primary-foreground: #0f172a;
+  --agent-ring: hsl(32 90% 52%);
+  --agent-sidebar: hsl(32 40% 7%);
+  --agent-sidebar-foreground: hsl(32 25% 95%);
+  --agent-sidebar-muted: hsl(32 30% 60%);
+}
+
+/* Theme transition */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 150ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Swatch colors used by theme scheme picker */
+.agent-swatch-indigo { background-color: #6366f1; }
+.agent-swatch-ocean { background-color: #0ea5e9; }
+.agent-swatch-emerald { background-color: #10b981; }
+.agent-swatch-rose { background-color: #f43f5e; }
+.agent-swatch-amber { background-color: #f59e0b; }
+
+/* Desktop window chrome */
+.window-close-btn:hover { background-color: #ef4444; color: #ffffff; }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--agent-background);
+    --color-foreground: var(--agent-foreground);
+    --color-card: var(--agent-card);
+    --color-card-foreground: var(--agent-card-foreground);
+    --color-popover: var(--agent-popover);
+    --color-popover-foreground: var(--agent-popover-foreground);
+    --color-primary: var(--agent-primary);
+    --color-primary-foreground: var(--agent-primary-foreground);
+    --color-muted: var(--agent-muted);
+    --color-muted-foreground: var(--agent-muted-foreground);
+    --color-border: var(--agent-border);
+    --color-input: var(--agent-input);
+    --color-ring: var(--agent-ring);
+    --color-sidebar: var(--agent-sidebar);
+    --color-sidebar-foreground: var(--agent-sidebar-foreground);
+    --radius-sm: var(--agent-radius-sm);
+    --radius-md: var(--agent-radius-md);
+    --radius-lg: var(--agent-radius-lg);
+  }
+  @layer base {
+    body { background: var(--agent-background); color: var(--agent-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--agent-background); }
+      .text-background { color: var(--agent-background); }
+      .border-background { border-color: var(--agent-background); }
+      .ring-background { --tw-ring-color: var(--agent-background); }
+      .bg-foreground { background-color: var(--agent-foreground); }
+      .text-foreground { color: var(--agent-foreground); }
+      .border-foreground { border-color: var(--agent-foreground); }
+      .ring-foreground { --tw-ring-color: var(--agent-foreground); }
+      .bg-card { background-color: var(--agent-card); }
+      .text-card { color: var(--agent-card); }
+      .border-card { border-color: var(--agent-card); }
+      .ring-card { --tw-ring-color: var(--agent-card); }
+      .bg-card-foreground { background-color: var(--agent-card-foreground); }
+      .text-card-foreground { color: var(--agent-card-foreground); }
+      .border-card-foreground { border-color: var(--agent-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--agent-card-foreground); }
+      .bg-popover { background-color: var(--agent-popover); }
+      .text-popover { color: var(--agent-popover); }
+      .border-popover { border-color: var(--agent-popover); }
+      .ring-popover { --tw-ring-color: var(--agent-popover); }
+      .bg-popover-foreground { background-color: var(--agent-popover-foreground); }
+      .text-popover-foreground { color: var(--agent-popover-foreground); }
+      .border-popover-foreground { border-color: var(--agent-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--agent-popover-foreground); }
+      .bg-primary { background-color: var(--agent-primary); }
+      .text-primary { color: var(--agent-primary); }
+      .border-primary { border-color: var(--agent-primary); }
+      .ring-primary { --tw-ring-color: var(--agent-primary); }
+      .bg-primary-foreground { background-color: var(--agent-primary-foreground); }
+      .text-primary-foreground { color: var(--agent-primary-foreground); }
+      .border-primary-foreground { border-color: var(--agent-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--agent-primary-foreground); }
+      .bg-muted { background-color: var(--agent-muted); }
+      .text-muted { color: var(--agent-muted); }
+      .border-muted { border-color: var(--agent-muted); }
+      .ring-muted { --tw-ring-color: var(--agent-muted); }
+      .bg-muted-foreground { background-color: var(--agent-muted-foreground); }
+      .text-muted-foreground { color: var(--agent-muted-foreground); }
+      .border-muted-foreground { border-color: var(--agent-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--agent-muted-foreground); }
+      .bg-border { background-color: var(--agent-border); }
+      .text-border { color: var(--agent-border); }
+      .border-border { border-color: var(--agent-border); }
+      .ring-border { --tw-ring-color: var(--agent-border); }
+      .bg-input { background-color: var(--agent-input); }
+      .text-input { color: var(--agent-input); }
+      .border-input { border-color: var(--agent-input); }
+      .ring-input { --tw-ring-color: var(--agent-input); }
+      .bg-ring { background-color: var(--agent-ring); }
+      .text-ring { color: var(--agent-ring); }
+      .border-ring { border-color: var(--agent-ring); }
+      .ring-ring { --tw-ring-color: var(--agent-ring); }
+      .bg-sidebar { background-color: var(--agent-sidebar); }
+      .text-sidebar { color: var(--agent-sidebar); }
+      .border-sidebar { border-color: var(--agent-sidebar); }
+      .ring-sidebar { --tw-ring-color: var(--agent-sidebar); }
+      .bg-sidebar-foreground { background-color: var(--agent-sidebar-foreground); }
+      .text-sidebar-foreground { color: var(--agent-sidebar-foreground); }
+      .border-sidebar-foreground { border-color: var(--agent-sidebar-foreground); }
+      .ring-sidebar-foreground { --tw-ring-color: var(--agent-sidebar-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="h-screen overflow-hidden font-sans antialiased">
+    <main>
+      <style>
+        [data-viewport-mode="app-shell"] {
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          width: 100%;
+          overflow: hidden;
+        }
+        [data-region="title-bar"] {
+          flex: none;
+          height: 40px;
+          -webkit-app-region: drag;
+          app-region: drag;
+        }
+        [data-region="title-bar"] button {
+          -webkit-app-region: no-drag;
+          app-region: no-drag;
+        }
+        [data-region="app-body"] {
+          flex: 1 1 0%;
+          min-height: 0;
+          display: flex;
+          flex-direction: row;
+          overflow: hidden;
+        }
+        [data-region="sidebar"] {
+          flex: none;
+          width: 240px;
+          height: 100%;
+          overflow-y: auto;
+        }
+        [data-region="main"] {
+          flex: 1 1 0%;
+          min-width: 0;
+          height: 100%;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        [data-region="top-bar"] {
+          flex: none;
+          height: 64px;
+        }
+        [data-scroll-region="primary"] {
+          flex: 1 1 0%;
+          min-height: 0;
+        }
+      </style>
+      <div data-viewport-mode="app-shell" class="bg-background text-foreground">
+        <div data-region="title-bar" class="bg-card border-b border-border flex items-center justify-between px-3 select-none">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded bg-primary text-primary-foreground flex items-center justify-center">
+              <i data-lucide="bot" class="w-3 h-3"></i>
+            </div>
+            <span class="text-sm font-medium text-foreground" data-i18n="appTitle">AI Agent</span>
+          </div>
+          <div class="flex items-center h-full">
+            <button type="button" class="h-full px-3 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors" aria-label="Minimize">
+              <i data-lucide="minus" class="w-4 h-4"></i>
+            </button>
+            <button type="button" class="h-full px-3 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors" aria-label="Maximize">
+              <i data-lucide="square" class="w-3 h-3"></i>
+            </button>
+            <button type="button" class="window-close-btn h-full px-3 flex items-center justify-center text-muted-foreground transition-colors" aria-label="Close">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        <div data-region="app-body">
+        <aside id="sidebar" data-region="sidebar" class="bg-sidebar text-sidebar-foreground flex flex-col justify-between p-4">
+          <div>
+            <div class="flex items-center gap-3 mb-8">
+              <button type="button" class="p-2 rounded-md hover:bg-white/10 transition-colors" aria-label="Menu">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+              </button>
+              <span class="text-lg font-semibold" data-i18n="appTitle">AI Agent</span>
+            </div>
+            <nav class="flex flex-col gap-1">
+              <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md bg-white/10 text-sidebar-foreground font-medium">
+                <i data-lucide="home" class="w-4 h-4"></i>
+                <span data-i18n="navHome">Home</span>
+              </a>
+              <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground transition-colors">
+                <i data-lucide="check-square" class="w-4 h-4"></i>
+                <span data-i18n="navTasks">Tasks</span>
+              </a>
+              <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground transition-colors">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span data-i18n="navSettings">Settings</span>
+              </a>
+            </nav>
+          </div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+            <div class="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+              <i data-lucide="user" class="w-4 h-4"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium truncate" data-i18n="userAdmin">Admin</p>
+              <p class="text-xs text-sidebar-muted truncate">admin@ai-agent.cn</p>
+            </div>
+          </div>
+        </aside>
+        <div id="main-area" data-region="main" class="bg-background">
+          <header data-region="top-bar" class="bg-card border-b border-border flex items-center justify-between px-6">
+            <h1 class="text-xl font-semibold text-foreground" data-i18n="workbench">Workbench</h1>
+            <div class="flex items-center gap-4">
+              <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"></i>
+                <input type="text" data-i18n-placeholder="searchPlaceholder" placeholder="Search..." class="pl-9 pr-4 py-2 rounded-md bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <button id="lang-toggle" type="button" class="p-2 rounded-md hover:bg-muted transition-colors text-sm font-medium text-foreground min-w-[40px]" aria-label="Switch language">EN</button>
+              <div class="relative">
+                <button id="theme-toggle" type="button" class="relative p-2 rounded-md hover:bg-muted transition-colors text-foreground" aria-label="Toggle appearance">
+                  <i data-lucide="palette" class="w-5 h-5"></i>
+                </button>
+                <div id="theme-panel" class="theme-popover bg-card border border-border rounded-xl shadow-lg p-4 space-y-4" data-open="false">
+                  <div>
+                    <p class="text-xs font-medium text-muted-foreground mb-2" data-i18n="themePanelMode">Appearance</p>
+                    <button id="mode-switch" type="button" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors text-sm text-foreground">
+                      <i data-lucide="moon" class="w-4 h-4"></i>
+                      <span id="mode-label" data-i18n="modeSwitchToDark">Switch to dark mode</span>
+                    </button>
+                  </div>
+                  <div>
+                    <p class="text-xs font-medium text-muted-foreground mb-2" data-i18n="themePanelScheme">Color scheme</p>
+                    <div class="flex items-center gap-2">
+                      <button type="button" data-scheme="indigo" class="scheme-btn w-7 h-7 rounded-full ring-2 ring-offset-2 ring-transparent ring-offset-card focus:outline-none agent-swatch-indigo" aria-label="Indigo"></button>
+                      <button type="button" data-scheme="ocean" class="scheme-btn w-7 h-7 rounded-full ring-2 ring-offset-2 ring-transparent ring-offset-card focus:outline-none agent-swatch-ocean" aria-label="Ocean"></button>
+                      <button type="button" data-scheme="emerald" class="scheme-btn w-7 h-7 rounded-full ring-2 ring-offset-2 ring-transparent ring-offset-card focus:outline-none agent-swatch-emerald" aria-label="Emerald"></button>
+                      <button type="button" data-scheme="rose" class="scheme-btn w-7 h-7 rounded-full ring-2 ring-offset-2 ring-transparent ring-offset-card focus:outline-none agent-swatch-rose" aria-label="Rose"></button>
+                      <button type="button" data-scheme="amber" class="scheme-btn w-7 h-7 rounded-full ring-2 ring-offset-2 ring-transparent ring-offset-card focus:outline-none agent-swatch-amber" aria-label="Amber"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="relative p-2 rounded-md hover:bg-muted transition-colors" aria-label="Notifications">
+                <i data-lucide="bell" class="w-5 h-5 text-foreground"></i>
+                <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary"></span>
+              </button>
+              <div class="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                <i data-lucide="user" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </header>
+          <div data-scroll-region="primary" class="p-6 space-y-6 overflow-y-auto">
+            <section class="bg-card rounded-xl p-6 shadow-sm border border-border">
+              <h2 class="text-2xl font-semibold text-card-foreground" data-i18n="welcomeTitle">Good morning, welcome back</h2>
+              <p class="text-muted-foreground mt-1" data-i18n="welcomeSubtitle">Here is your overview for today.</p>
+            </section>
+            <section class="grid grid-cols-3 gap-4">
+              <div class="bg-card rounded-xl p-5 shadow-sm border border-border flex items-center gap-4">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <i data-lucide="check-square" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <p class="text-sm text-muted-foreground" data-i18n="tasksToday">Today's tasks</p>
+                  <p class="text-2xl font-bold text-card-foreground">12</p>
+                </div>
+              </div>
+              <div class="bg-card rounded-xl p-5 shadow-sm border border-border flex items-center gap-4">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <i data-lucide="loader-2" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <p class="text-sm text-muted-foreground" data-i18n="inProgress">In progress</p>
+                  <p class="text-2xl font-bold text-card-foreground">5</p>
+                </div>
+              </div>
+              <div class="bg-card rounded-xl p-5 shadow-sm border border-border flex items-center gap-4">
+                <div class="w-10 h-10 rounded-lg bg-primary/20 text-primary flex items-center justify-center">
+                  <i data-lucide="check-circle" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <p class="text-sm text-muted-foreground" data-i18n="completed">Completed</p>
+                  <p class="text-2xl font-bold text-card-foreground">7</p>
+                </div>
+              </div>
+            </section>
+            <section class="grid grid-cols-2 gap-4">
+              <div class="bg-card rounded-xl p-5 shadow-sm border border-border">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="cpu" class="w-5 h-5 text-primary"></i>
+                    <h3 class="font-semibold text-card-foreground" data-i18n="apiUsageTitle">Model API Usage</h3>
+                  </div>
+                  <span class="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary" data-i18n="monthly">Monthly</span>
+                </div>
+                <div class="mb-4">
+                  <div class="flex items-end justify-between mb-2">
+                    <span class="text-3xl font-bold text-card-foreground">45.2%</span>
+                    <span class="text-sm text-muted-foreground">45,230 / 100,000 tokens</span>
+                  </div>
+                  <div class="w-full h-2 rounded-full bg-muted overflow-hidden">
+                    <div class="h-full rounded-full bg-primary" style="width: 45.2%"></div>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div class="bg-muted rounded-lg p-3">
+                    <p class="text-muted-foreground" data-i18n="calls">Calls</p>
+                    <p class="font-semibold text-card-foreground">3,284</p>
+                  </div>
+                  <div class="bg-muted rounded-lg p-3">
+                    <p class="text-muted-foreground" data-i18n="remaining">Remaining</p>
+                    <p class="font-semibold text-card-foreground">54,770</p>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-card rounded-xl p-5 shadow-sm border border-border">
+                <div class="flex items-center gap-2 mb-4">
+                  <i data-lucide="trending-up" class="w-5 h-5 text-primary"></i>
+                  <h3 class="font-semibold text-card-foreground" data-i18n="apiNewsTitle">API Market News</h3>
+                </div>
+                <ul class="space-y-3">
+                  <li class="flex items-start gap-3 text-sm">
+                    <span class="text-xs text-muted-foreground whitespace-nowrap mt-0.5">08-19</span>
+                    <div>
+                      <p class="text-card-foreground font-medium" data-i18n="news1Title">GPT-4o API price cut by 15%</p>
+                      <p class="text-muted-foreground text-xs" data-i18n="news1Desc">OpenAI lowers input and output prices for select models starting today.</p>
+                    </div>
+                  </li>
+                  <li class="flex items-start gap-3 text-sm">
+                    <span class="text-xs text-muted-foreground whitespace-nowrap mt-0.5">08-18</span>
+                    <div>
+                      <p class="text-card-foreground font-medium" data-i18n="news2Title">Claude 3.5 Sonnet API is live</p>
+                      <p class="text-muted-foreground text-xs" data-i18n="news2Desc">Anthropic opens enterprise rates and long-context support.</p>
+                    </div>
+                  </li>
+                  <li class="flex items-start gap-3 text-sm">
+                    <span class="text-xs text-muted-foreground whitespace-nowrap mt-0.5">08-17</span>
+                    <div>
+                      <p class="text-card-foreground font-medium" data-i18n="news3Title">Domestic LLM API price war continues</p>
+                      <p class="text-muted-foreground text-xs" data-i18n="news3Desc">Multiple vendors offer one million tokens free quota.</p>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </section>
+            <section class="bg-card rounded-xl shadow-sm border border-border">
+              <div class="px-6 py-4 border-b border-border">
+                <h3 class="font-semibold text-card-foreground" data-i18n="recentActivity">Recent Activity</h3>
+              </div>
+              <ul class="divide-y divide-border">
+                <li class="px-6 py-3 flex items-center gap-3 text-sm text-card-foreground">
+                  <span class="w-2 h-2 rounded-full bg-primary"></span>
+                  <span data-i18n="activity1">New task "Organize client requirements" created</span>
+                </li>
+                <li class="px-6 py-3 flex items-center gap-3 text-sm text-card-foreground">
+                  <span class="w-2 h-2 rounded-full bg-muted-foreground"></span>
+                  <span data-i18n="activity2">API usage alert: 68% used today</span>
+                </li>
+                <li class="px-6 py-3 flex items-center gap-3 text-sm text-card-foreground">
+                  <span class="w-2 h-2 rounded-full bg-primary"></span>
+                  <span data-i18n="activity3">Task "Generate weekly report" completed</span>
+                </li>
+                <li class="px-6 py-3 flex items-center gap-3 text-sm text-card-foreground">
+                  <span class="w-2 h-2 rounded-full bg-muted-foreground"></span>
+                  <span data-i18n="activity4">System notice: model version upgraded</span>
+                </li>
+              </ul>
+            </section>
+          </div>
+        </div>
+        </div>
+      </div>
+      <button id="fab-chat" data-dom-id="fab-chat" type="button" class="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:opacity-90 transition-opacity" aria-label="Open chat">
+        <i data-lucide="message-circle" class="w-6 h-6"></i>
+      </button>
+      <div id="chat-dialog-panel" data-region="chat-dialog" class="fixed inset-0 z-50 flex items-end justify-end p-6">
+        <div class="w-[360px] h-[480px] bg-card rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="AI Assistant chat">
+          <header class="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <i data-lucide="bot" class="w-4 h-4"></i>
+              </div>
+              <span class="font-semibold text-card-foreground" data-i18n="chatTitle">AI Assistant</span>
+            </div>
+            <button id="chat-close" data-dom-id="chat-close" type="button" class="p-2 rounded-md hover:bg-muted transition-colors text-muted-foreground" aria-label="Close chat">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </header>
+          <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-background">
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                <i data-lucide="bot" class="w-4 h-4"></i>
+              </div>
+              <div class="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm">
+                <p class="text-sm text-card-foreground leading-relaxed" data-i18n="chatWelcome">Hello! I am your AI assistant. How can I help you?</p>
+              </div>
+            </div>
+          </div>
+          <div class="p-3 border-t border-border bg-card">
+            <div class="flex items-center gap-2">
+              <input type="text" data-i18n-placeholder="chatPlaceholder" placeholder="Type a message..." class="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              <button type="button" class="p-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity" aria-label="Send message">
+                <i data-lucide="send" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script>
+      (function () {
+        const translations = {
+          en: {
+            appTitle: "AI Agent",
+            navHome: "Home",
+            navTasks: "Tasks",
+            navSettings: "Settings",
+            workbench: "Workbench",
+            searchPlaceholder: "Search...",
+            themeToggleLabel: "Toggle appearance",
+            modeSwitchToDark: "Switch to dark mode",
+            modeSwitchToLight: "Switch to light mode",
+            themePanelMode: "Appearance",
+            themePanelScheme: "Color scheme",
+            notifications: "Notifications",
+            welcomeTitle: "Good morning, welcome back",
+            welcomeSubtitle: "Here is your overview for today.",
+            tasksToday: "Today's tasks",
+            inProgress: "In progress",
+            completed: "Completed",
+            apiUsageTitle: "Model API Usage",
+            monthly: "Monthly",
+            calls: "Calls",
+            remaining: "Remaining",
+            apiNewsTitle: "API Market News",
+            recentActivity: "Recent Activity",
+            activity1: 'New task "Organize client requirements" created',
+            activity2: "API usage alert: 68% used today",
+            activity3: 'Task "Generate weekly report" completed',
+            activity4: "System notice: model version upgraded",
+            chatTitle: "AI Assistant",
+            chatWelcome: "Hello! I am your AI assistant. How can I help you?",
+            chatPlaceholder: "Type a message...",
+            sendMessage: "Send message",
+            closeChat: "Close chat",
+            openChat: "Open chat",
+            userAdmin: "Admin",
+            news1Title: "GPT-4o API price cut by 15%",
+            news1Desc: "OpenAI lowers input and output prices for select models starting today.",
+            news2Title: "Claude 3.5 Sonnet API is live",
+            news2Desc: "Anthropic opens enterprise rates and long-context support.",
+            news3Title: "Domestic LLM API price war continues",
+            news3Desc: "Multiple vendors offer one million tokens free quota.",
+            langLabel: "EN"
+          },
+          zh: {
+            appTitle: "AI Agent",
+            navHome: "首页",
+            navTasks: "任务",
+            navSettings: "设置",
+            workbench: "工作台",
+            searchPlaceholder: "搜索...",
+            themeToggleLabel: "切换外观",
+            modeSwitchToDark: "切换为深色模式",
+            modeSwitchToLight: "切换为浅色模式",
+            themePanelMode: "显示模式",
+            themePanelScheme: "配色方案",
+            notifications: "通知",
+            welcomeTitle: "早上好，欢迎回来",
+            welcomeSubtitle: "以下是您今天的任务与 API 概览。",
+            tasksToday: "今日任务",
+            inProgress: "进行中",
+            completed: "已完成",
+            apiUsageTitle: "模型 API 用量",
+            monthly: "本月",
+            calls: "调用次数",
+            remaining: "剩余额度",
+            apiNewsTitle: "API 行情资讯",
+            recentActivity: "最近活动",
+            activity1: "新任务“整理客户需求”已创建",
+            activity2: "API 用量预警：今日已用 68%",
+            activity3: "任务“生成周报”已完成",
+            activity4: "系统通知：模型版本已升级",
+            chatTitle: "AI 助手",
+            chatWelcome: "你好！我是你的 AI 助手，有什么可以帮你的？",
+            chatPlaceholder: "输入消息...",
+            sendMessage: "发送消息",
+            closeChat: "关闭对话",
+            openChat: "打开对话",
+            userAdmin: "管理员",
+            news1Title: "GPT-4o 调用单价下调 15%",
+            news1Desc: "OpenAI 宣布即日起降低部分模型输入输出价格",
+            news2Title: "Claude 3.5 Sonnet API 正式上线",
+            news2Desc: "Anthropic 同步开放企业级速率与长上下文",
+            news3Title: "国内大模型 API 价格战持续",
+            news3Desc: "多家厂商推出百万 tokens 免费额度",
+            langLabel: "中"
+          }
+        };
+
+        const root = document.documentElement;
+        const langToggle = document.getElementById('lang-toggle');
+        const themeToggle = document.getElementById('theme-toggle');
+        const themePanel = document.getElementById('theme-panel');
+        const modeSwitch = document.getElementById('mode-switch');
+        const modeLabel = document.getElementById('mode-label');
+        const schemeBtns = document.querySelectorAll('.scheme-btn');
+
+        let currentLang = localStorage.getItem('agent-lang') || 'en';
+
+        function applyLang(lang) {
+          currentLang = lang;
+          root.setAttribute('lang', lang);
+          document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (translations[lang][key]) el.textContent = translations[lang][key];
+          });
+          document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.getAttribute('data-i18n-placeholder');
+            if (translations[lang][key]) el.setAttribute('placeholder', translations[lang][key]);
+          });
+          document.querySelectorAll('[data-i18n-label]').forEach(el => {
+            const key = el.getAttribute('data-i18n-label');
+            if (translations[lang][key]) el.setAttribute('aria-label', translations[lang][key]);
+          });
+          if (langToggle) {
+            langToggle.textContent = translations[lang].langLabel;
+          }
+          const isDark = root.getAttribute('data-theme') === 'dark';
+          modeLabel.textContent = isDark ? translations[lang].modeSwitchToLight : translations[lang].modeSwitchToDark;
+          localStorage.setItem('agent-lang', lang);
+        }
+
+        function applyTheme(theme, scheme) {
+          root.setAttribute('data-theme', theme);
+          root.setAttribute('data-scheme', scheme);
+          modeLabel.textContent = theme === 'dark' ? translations[currentLang].modeSwitchToLight : translations[currentLang].modeSwitchToDark;
+          schemeBtns.forEach(btn => {
+            const active = btn.getAttribute('data-scheme') === scheme;
+            btn.classList.toggle('ring-primary', active);
+            btn.classList.toggle('ring-transparent', !active);
+          });
+        }
+
+        applyLang(currentLang);
+
+        const savedTheme = localStorage.getItem('agent-theme') || 'light';
+        const savedScheme = localStorage.getItem('agent-scheme') || 'indigo';
+        applyTheme(savedTheme, savedScheme);
+
+        langToggle.addEventListener('click', () => {
+          applyLang(currentLang === 'en' ? 'zh' : 'en');
+        });
+
+        themeToggle.addEventListener('click', () => {
+          const open = themePanel.getAttribute('data-open') === 'true';
+          themePanel.setAttribute('data-open', String(!open));
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!themeToggle.contains(e.target) && !themePanel.contains(e.target)) {
+            themePanel.setAttribute('data-open', 'false');
+          }
+        });
+
+        modeSwitch.addEventListener('click', () => {
+          const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+          const scheme = root.getAttribute('data-scheme');
+          applyTheme(next, scheme);
+          localStorage.setItem('agent-theme', next);
+        });
+
+        schemeBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const scheme = btn.getAttribute('data-scheme');
+            const theme = root.getAttribute('data-theme');
+            applyTheme(theme, scheme);
+            localStorage.setItem('agent-scheme', scheme);
+          });
+        });
+
+        lucide.createIcons();
+      })();
+    </script>
+
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+      .theme-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        min-width: 220px;
+        z-index: 60;
+      }
+      .theme-popover[data-open="false"] { display: none; }
+      .theme-popover[data-open="true"] { display: block; }
+    </style>
+</body>
+</html>
