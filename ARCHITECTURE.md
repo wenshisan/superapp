@@ -5,6 +5,10 @@
 > and swaps the substrate: the runtime moves from **Node.js to Rust**, and the interface moves
 > from a built-in web app to a **Flutter shell in which the UI itself is a plugin**.
 >
+> **Flutter is the UI from day one.** This gives us native desktop binaries and mobile apps from
+> the same codebase, with UI surfaces (chat, plugin market, trace viewer) as attachable plugins
+> rather than built-in views.
+>
 > Goal: one memory-safe, model-neutral, hot-swappable agent runtime that runs as a native
 > binary on desktop and links into a mobile app.
 
@@ -39,16 +43,44 @@ See [`README.md`](./README.md) for the per-subsystem status list and the known g
 
 ## 1. Design philosophy: everything is a plugin
 
-The paradigm is DSH's; the mechanics are what Rust makes natural.
+The paradigm is DSH's; the mechanics are what Rust makes natural. superapp adds one thing DSH
+does not have: **the user creates plugins by asking, and every ask becomes permanent software.**
+
+### The core inversion
+
+A conventional agent app treats each request as disposable. You ask, it answers, the context is
+gone; ask the same thing tomorrow and the model does the work again. superapp treats each request
+as a **build instruction**. The ask bubble generates a plugin, the plugin lands in the left
+navigation, and it stays there — clickable, editable, composable with everything else the user
+has built.
+
+| | Conventional agent chat | superapp |
+|-|-------------------------|----------|
+| What an ask produces | an answer | a plugin |
+| Where it lives afterward | conversation scrollback | left navigation, persisted |
+| Repeat use | re-ask, model re-runs | click the nav entry, no model call |
+| Cost of the second use | another inference | zero |
+| Composition | copy-paste between chats | plugins call plugins |
+
+The practical consequence: **the model is used to build features, not to answer questions
+repeatedly.** A user who asks "summarise today's traces by cost" once gets a nav entry they click
+every morning for free. That's the whole bet — inference builds the tool, then the tool runs
+without inference.
+
+This is why the plugin system is the kernel's only job and why the UI is registry-driven rather
+than designed. The set of features the app has is not fixed at build time; it's whatever its
+users have asked for.
 
 | Dimension | DSH (Node.js + web UI) | superapp (Rust kernel + Flutter UI) |
 |-----------|------------------------|-------------------------------------|
 | Kernel language | TypeScript, ~2 700 lines | Rust — ~460 lines today, ~3 000 budgeted |
 | Plugin artifact | npm package + TS decorators | Static crate today; dynamic library (`.so`/`.dylib`/`.dll`) or WASM module planned |
 | Hot-swap engine | Cordis, via TS reflection | **Cordis-RS**, via trait objects + scoped lifetimes |
-| UI | built-in web app on port 3030 | **Flutter**, with attachable UI plugins ⬜ |
+| UI | built-in web app on port 3030 | **Flutter shell, built first**, with attachable UI plugins ⬜ |
 | Sandbox | OS-level (Linux) | `seccomp`/namespaces **and** a WASM micro-sandbox ⬜ |
 | Model bindings | ~40 providers | providers are plugins; **one echo stub exists so far** |
+| Who writes plugins | developers, ahead of time | **developers and end users, via the ask bubble** ⬜ |
+| What an ask produces | a chat answer | **a plugin with a nav entry** ⬜ |
 
 The contract shift is the substantive one. DSH attaches metadata with decorators and reflects
 over it at load time, so a malformed plugin is a runtime failure. In Cordis-RS a plugin is a
@@ -73,12 +105,20 @@ plugin authors must rebuild against a matching kernel ABI.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                 Flutter UI layer (Dart, pluggable)      ⬜ planned │
-│  ┌───────────┐ ┌───────────┐ ┌────────────┐ ┌─────────────────┐  │
-│  │ chat /    │ │ plugin    │ │ workflow   │ │ trace replay /  │  │
-│  │ session   │ │ market    │ │ canvas     │ │ debugger        │  │
-│  └───────────┘ └───────────┘ └────────────┘ └─────────────────┘  │
-│     every panel is an attachable plugin, reached only through    │
-│     the UI-Bridge                                                │
+│  ┌─────────┬──────────────────────────────────────────────────┐  │
+│  │  LEFT   │  active plugin surface                           │  │
+│  │  NAV    │                                                  │  │
+│  │         │  ┌───────────┐ ┌───────────┐ ┌────────────────┐  │  │
+│  │ built-in│  │ trace     │ │ plugin    │ │ user-generated │  │  │
+│  │ ────────│  │ viewer    │ │ list      │ │ custom views   │  │  │
+│  │ installd│  └───────────┘ └───────────┘ └────────────────┘  │  │
+│  │ ────────│                                                  │  │
+│  │ custom  │                          ╭──────────╮            │  │
+│  │  ↑ from │                          │ ask ◉    │ ← floating │  │
+│  │  asks   │                          ╰──────────╯   bubble   │  │
+│  └─────────┴──────────────────────────────────────────────────┘  │
+│   nav entries ARE the plugin registry; the bubble WRITES to it    │
+│   every panel is an attachable plugin, reached through the bridge │
 └─────────────────────────────┬────────────────────────────────────┘
                               │  FFI (flutter_rust_bridge) or gRPC
 ┌─────────────────────────────┴────────────────────────────────────┐
@@ -261,54 +301,184 @@ of the host process — which is the reason not to point this kernel at untruste
 
 ---
 
-## 6. Flutter plugin UI ⬜
+## 6. Flutter plugin UI ⬜ — the starting point
 
-Where DSH's web UI is built in and started with `npx @deepseek-ai/dsh web`, superapp plans a
+Where DSH's web UI is built in and started with `npx @deepseek-ai/dsh web`, superapp uses a
 **Flutter shell** in which interface surfaces are attachable plugins — chat and trace-replay
 sit on the same footing as a third-party dashboard.
+
+**Flutter is the first thing to build, not the last.** The kernel boots but produces nothing a
+person can look at, so the trace log and event stream are only inspectable from an example
+binary. A minimal Flutter shell reading the kernel's trace makes every subsequent kernel change
+observable, which is why the UI moves ahead of dependency resolution and dylib loading in the
+roadmap.
+
+### 6.1 The interaction model: ask → plugin
+
+**Every user ask creates a plugin.** When the user types a request into the floating ask bubble,
+the system generates a plugin to fulfill it — a new tool, a dashboard panel, a workflow
+automation — and registers that plugin into the left navigation as a permanent entry. The user
+is not calling an AI assistant to fix a transient problem; they are **building the application
+itself** by describing what they need, and the result is installed software.
+
+This inverts the usual agent chat pattern. Standard chat agents answer once, then the context
+evaporates. Here, every answer is a plugin artifact: it has an entry point, persists across
+sessions, can be edited or removed, and composes with other plugins the user has created. The
+left navigation is the user's command palette, and every item in it came from an ask.
+
+**Example flow:**
+1. User types in the ask bubble: "Show me the most expensive API calls from the trace."
+2. System generates a `UiPlugin` that queries `TraceCollector`, aggregates by cost, and renders
+   a sorted table.
+3. The plugin is registered with ID `expensive-calls`, and its name appears in the left
+   navigation under a "Custom Views" section.
+4. Next session, the entry is still there. Clicking it renders the same view. The user can edit
+   the plugin's prompt to refine the query, or delete it if no longer needed.
+
+The ask bubble is not a chatbot. It is the **plugin factory UI**. The left navigation is not a
+static menu designed at build time; it is the **user's plugin collection**.
+
+### 6.2 The UI plugin contract
 
 ```dart
 abstract class UiPlugin {
   String get id;
+  String get label;                      // shown in left navigation
   Widget build(BuildContext ctx, KernelBridge bridge);
   void onAttach(KernelBridge bridge);
   void onDetach();
 }
 ```
 
-The bridge talks to the Rust kernel via `flutter_rust_bridge` (code-generated FFI, the low-
-ceremony path) or hand-authored `dart:ffi`, or over gRPC for out-of-process layouts. The kernel
-pushes state changes back through `EventBus`; UI plugins subscribe to the event stream and
-react.
+The shell holds a registry of `UiPlugin`s and renders whichever surfaces are attached. Nothing
+in the shell knows about chat specifically — the chat view is a plugin registered at startup,
+same as one installed later from the plugin market or generated from an ask.
 
-**Planned built-in UI plugins:**
+The left navigation is divided into sections:
 
-- Chat / session view (message list, tool-call visualisations)
-- Plugin market (browse, install, remove kernel and UI plugins)
-- Workflow canvas (visual agent-loop and tool-chain editor)
-- Trace replay (read the `TraceCollector` log, scrub through timeline, fork)
-- Settings / secret manager
+- **Built-in** (shipped with the app): trace viewer, plugin list, settings
+- **Installed** (from the plugin market or loaded from disk)
+- **Custom** (generated from user asks, persisted in the user's plugin directory)
 
-The same Flutter tree compiles to Windows, macOS, Linux, Android, and iOS. That's the headline
-reason for picking Flutter: a desktop harness and a mobile app from one codebase, where a web
-UI would need separate webview/electron packaging for native use.
+Every section is just a filter over the same plugin registry. The shell doesn't hard-code which
+plugins exist; it asks the registry and renders them.
+
+### 6.3 Bridge: `flutter_rust_bridge`, in-process
+
+The decision from open question 6 is settled for the first milestone: **`flutter_rust_bridge`
+with the kernel linked in-process**. Rationale — it code-generates the FFI from annotated Rust
+signatures (no hand-written `dart:ffi` marshalling), it supports streams so `EventBus` maps onto
+a Dart `Stream` naturally, and an in-process kernel is the only shape that packages cleanly into
+a mobile app. gRPC stays available for out-of-process or remote-kernel layouts later; it is not
+the default.
+
+Surface the bridge needs to expose for the first milestone:
+
+| Direction | Call | Maps to |
+|-----------|------|---------|
+| Dart → Rust | `bootKernel()` | `Kernel::new` + activate the statically linked plugin set |
+| Dart → Rust | `listPlugins()` | `LifecycleManager` active table |
+| Dart → Rust | `traceSnapshot()` | `TraceCollector::snapshot` |
+| Dart → Rust | `generatePlugin(ask)` | ask → plugin pipeline (see §6.4) |
+| Dart → Rust | `installPlugin(spec)` | persist to the user plugin dir + `LifecycleManager::activate` |
+| Dart → Rust | `removePlugin(id)` | `deactivate` + delete from user plugin dir |
+| Rust → Dart | `eventStream()` | `EventBus` subscription as a Dart `Stream<Event>` |
+
+`Event` and trace entries need `serde`-serialisable shapes so codegen can mirror them in Dart.
+Today they are plain Rust enums with no derive — that is the first concrete kernel change the UI
+work forces.
+
+### 6.4 The ask → plugin pipeline
+
+This is the app's core mechanism, so it gets its own contract. The pipeline turns natural
+language into a registered, persisted plugin.
+
+```
+ask bubble  →  ModelProvider  →  PluginSpec  →  validate  →  persist  →  activate  →  nav entry
+   text         (generation)      (artifact)     (compile/     (user      (Lifecycle-    (UI
+                                                  schema)      plugin      Manager)      registry)
+                                                               dir)
+```
+
+`PluginSpec` is the generated artifact — the thing the model produces and the kernel installs:
+
+```rust
+pub struct PluginSpec {
+    pub manifest: Manifest,        // id, label, version, capability, dependencies
+    pub kind: PluginKind,          // what runtime executes this
+    pub source: String,            // the generated code or declarative config
+    pub ask: String,               // the original user request, kept for edit/regenerate
+}
+
+pub enum PluginKind {
+    /// Dart widget code, run in the Flutter shell. Covers custom views and panels.
+    UiWidget,
+    /// WASM module compiled from generated Rust/other. Covers tools and computation.
+    Wasm,
+    /// Declarative: a composition of existing plugins, no new code.
+    /// Cheapest and safest path — prefer it when the ask can be satisfied by wiring
+    /// together plugins that already exist.
+    Composition { steps: Vec<StepSpec> },
+}
+```
+
+`PluginKind::Composition` matters more than it looks. Many asks ("show me X filtered by Y",
+"run tool A then tool B") need no new code at all — only a wiring of registered plugins. Trying
+composition before generating code makes the common case fast, deterministic, and free of the
+sandbox questions that generated code raises.
+
+Three problems this pipeline has to solve, none of them solved yet:
+
+- **Generated code is untrusted code.** A plugin the model wrote has the same standing as a
+  plugin downloaded from a stranger. This is the concrete reason the WASM sandbox (§5) is not
+  optional — `PluginKind::Wasm` must run confined, and `UiWidget` needs its own answer since
+  Dart widgets execute in the shell's process. Interpreting a constrained widget DSL rather than
+  compiling arbitrary Dart is the likely path.
+- **Validation before install.** A plugin that fails to compile, or whose manifest collides with
+  an existing ID, must be rejected before it reaches the navigation — a broken nav entry is worse
+  than a failed ask. Validation runs in the pipeline, not at first click.
+- **Edit and regenerate.** `PluginSpec.ask` is retained so the user can refine the original
+  request and regenerate rather than starting over. Whether regeneration replaces the plugin in
+  place or creates a version alongside it is an open question (§11.7).
+
+### 6.5 Build order
+
+1. **Shell + left navigation + trace viewer.** `ui/` workspace, `flutter_rust_bridge` wired to
+   `traceSnapshot()` and `eventStream()`, nav driven by the plugin registry, one read-only trace
+   panel. Proves the bridge and the registry-driven nav.
+2. **Plugin list panel.** Read `listPlugins()`, show manifest, capability, and active state.
+   Together with step 1 this makes the plugin system visible before anything generates plugins.
+3. **Ask bubble, composition only.** The floating bubble, wired to `generatePlugin()` restricted
+   to `PluginKind::Composition`. No code generation, no sandbox needed — proves the full
+   ask → spec → install → nav-entry loop against the safest plugin kind. Needs a real
+   `ModelProvider`, so it lands alongside the first non-stub model plugin.
+4. **Generated `UiWidget` plugins.** Constrained widget DSL plus validation. This is where the
+   untrusted-code question has to be answered rather than deferred.
+5. **Generated `Wasm` plugins.** Requires the WASM sandbox from §5.
+6. **Plugin market, workflow canvas, trace replay with scrub/fork, settings and secret
+   manager.** Each is a `UiPlugin`; none require shell changes.
+
+Desktop (Windows/macOS/Linux) is the target for steps 1–3; Android and iOS come from the same
+tree once the kernel builds for those triples. That single-codebase reach is the headline reason
+for picking Flutter over a web UI, which would need webview or Electron packaging to run native.
 
 **None of the above exists yet.** There is no `ui/` directory, no bridge code, no
-`pubspec.yaml`. Roadmap item 5 is building the skeleton.
+`pubspec.yaml`. This is now roadmap item 1.
 
 ---
 
 ## 7. End-to-end traceability 🟡
 
 The kernel's `TraceCollector` is meant to record every system prompt, thought, tool call,
-result, subagent spawn, and context injection as an immutable event stream. A Flutter trace-
-replay plugin consumes that stream and drives a timeline scrubber, breakpoint-resume, and
-branch-fork controls.
+result, subagent spawn, and context injection as an immutable event stream. **The Flutter trace
+viewer plugin consumes that stream** and drives a timeline scrubber, breakpoint-resume, and
+branch-fork controls — which is why building the UI comes before building deep agent features.
+An inspector for the trace makes kernel development observable.
 
 What exists: `TraceCollector` logs `PluginLoaded`, `PluginUnloaded`, and `Checkpoint` entries.
 What's missing: `EventBus::publish` does not write to the trace. The boot example fires
 `Event::Thought`, yet the trace ends up with three entries (two plugin loads, one checkpoint),
-not four. Closing that loop is roadmap item 1.
+not four. Closing that loop is prerequisite to the trace viewer being useful.
 
 ---
 
@@ -339,14 +509,24 @@ superapp/
 │   └── tool-bash/          # example tool plugin (`tool.bash`)
 │       ├── Cargo.toml
 │       └── src/lib.rs      # `BashTool` — implements `Plugin`, activate is a no-op ✅
+├── bridge/                 # ⬜ crate `cordis-bridge` — flutter_rust_bridge API surface
+│   ├── Cargo.toml          #    depends on cordis-rs; cdylib + staticlib targets
+│   └── src/api.rs          #    annotated fns: bootKernel, listPlugins, traceSnapshot,
+│                           #    eventStream
 └── ui/                     # ⬜ Flutter workspace — does not exist yet
     ├── pubspec.yaml
     ├── lib/
-    │   ├── bridge/         # flutter_rust_bridge codegen output
-    │   ├── ui_plugins/     # Flutter UI plugins
-    │   └── core/
-    └── proto/              # ⬜ FFI / gRPC contracts if the bridge needs explicit schemas
+    │   ├── bridge/         # flutter_rust_bridge codegen output (generated, checked in)
+    │   ├── shell/          # app shell: UiPlugin registry, layout, routing
+    │   ├── ui_plugins/     # trace_viewer/, plugin_list/, chat/ …
+    │   └── core/           # shared models, theme
+    ├── windows/ macos/ linux/ android/ ios/    # platform runners
+    └── flutter_rust_bridge.yaml                # codegen config
 ```
+
+The `bridge/` crate is deliberately separate from `kernel/`: the kernel stays a plain Rust
+library with no FFI annotations or `cdylib` target, and the bridge crate owns everything
+Flutter-specific. Swapping the UI layer, or adding a second one, means touching one crate.
 
 Total Rust LOC today (kernel + two plugin stubs): **462 lines**. The budget is ~3 000; most of
 the headroom is for dependency resolution, scope-resource tracking, dylib/WASM loading, and the
@@ -365,7 +545,7 @@ trait impls for domain sub-traits once those are added.
 | Secure sandbox | OS-level (Linux) | WASM + OS dual-track ⬜ |
 | End-to-end trace | ✅ | ✅ infra, 🟡 EventBus wiring |
 | Four operating modes | ✅ | ⬜ plugin sets not built |
-| Interface | built-in web (port 3030) | Flutter plugin UI ⬜ |
+| Interface | built-in web (port 3030) | **Flutter shell — first milestone** ⬜ |
 | Launch command | `npx @deepseek-ai/dsh web` | native binary / mobile app ⬜ |
 
 The mechanics are in place for the top three; most of the rest is planned.
@@ -511,11 +691,26 @@ These are unresolved choices, not implementation gaps.
    `Manifest.dependencies`, or leave that to the caller? Sorting is safer but means the kernel
    needs a DAG solver; manual ordering is flexible but error-prone.
 
-6. **Bridge protocol (Rust ↔ Flutter).** `flutter_rust_bridge` generates the FFI automatically
-   from annotated Rust signatures (low ceremony, opaque wire format). Hand-authored `dart:ffi`
-   gives full control but is verbose. gRPC over localhost decouples the processes but adds
-   latency. The decision affects mobile packaging: FFI and `flutter_rust_bridge` let the kernel
-   link into the app; gRPC requires a sidecar or background service.
+6. **Bridge protocol (Rust ↔ Flutter).** Decision made: **`flutter_rust_bridge` in-process, FFI
+   direct**. It generates the FFI from annotated Rust, supports streams (so `EventBus` maps to
+   `Stream<Event>`), and lets the kernel link into the mobile app. gRPC over localhost is
+   available for out-of-process layouts but is not the default — it adds latency and complicates
+   mobile packaging.
+
+7. **Edit and regenerate for user-generated plugins.** `PluginSpec.ask` is retained so the user
+   can refine the original request and regenerate. Should regeneration replace the plugin in
+   place (same ID, same nav entry, breaks anyone depending on the old version) or create a
+   version alongside it (safe, but nav clutter if the old version is never removed)? In-place
+   feels right for single-user custom views; versioning feels right for plugins other people
+   depend on. The distinction might be whether the plugin has dependents.
+
+8. **Sandboxing generated Dart widget code.** `PluginKind::Wasm` runs in the WASM sandbox,
+   `PluginKind::Composition` is just wiring (no untrusted code). But `PluginKind::UiWidget`
+   compiles Dart and runs it in the shell's process — same privileges as the rest of the UI.
+   The safest path is not compiling arbitrary Dart at all; instead, interpret a constrained
+   widget DSL (a declarative JSON-like shape that maps to a safe subset of Flutter widgets) or
+   compile to WASM and render through a host widget bridge. The latter has Flutter-for-WASM
+   challenges; the former needs a DSL design. This blocks step 4 of the build order (§6.5).
 
 None of these block the next roadmap items, so they're deferred until the decision has to be
 made.
